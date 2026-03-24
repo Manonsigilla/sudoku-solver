@@ -1,0 +1,18 @@
+*.db
+database/data/
+.env
+*.log
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# --- Python venv ---
+venv/
+.venv/
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
