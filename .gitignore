@@ -16,3 +16,6 @@ venv/
 .vscode/
 .idea/
 .DS_Store
+
+# --- Superpowers brainstorming mockups ---
+.superpowers/
