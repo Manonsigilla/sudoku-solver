@@ -1,2 +1,6 @@
 # Pygame
-pygame==2.0.1
+# [ORIGINAL] pygame==2.0.1  -- incompatible Python 3.12, mis a jour
+pygame>=2.6.0
+
+# [AJOUTE] Matplotlib pour les graphes de resultats
+matplotlib>=3.5.0
