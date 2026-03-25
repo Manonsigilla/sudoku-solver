@@ -1,2 +1,5 @@
 # Pygame
-pygame==2.6.1
+pygame>=2.6.0
+
+# Matplotlib
+matplotlib>=3.5.0

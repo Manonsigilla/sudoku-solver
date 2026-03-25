@@ -1,4 +1,5 @@
-from solver import brute_force, backtracking
+from solver import (brute_force_with_callback, backtracking_with_callback,
+                    backtracking_mrv, constraint_propagation, propagation_mrv)
 
 
 class SudokuGrid:
@@ -6,13 +7,13 @@ class SudokuGrid:
     original: list[list[int]]
 
     def __init__(self, filepath: str) -> None:
-        """Charge et parse la grille depuis un fichier texte."""
+        """Load and parse the grid from a text file."""
         self.grid = []
         self.original = []
         self.load_from_file(filepath)
 
     def load_from_file(self, filepath: str) -> None:
-        """Parse le fichier : '_' devient 0, les chiffres restent."""
+        """Parse the file: '_' becomes 0, digits stay as-is."""
         with open(filepath, "r") as f:
             lines = f.read().splitlines()
 
@@ -35,8 +36,7 @@ class SudokuGrid:
         self.original = [row[:] for row in self.grid]
 
     def is_valid(self, row: int, col: int, num: int) -> bool:
-        """Verifie si placer num a (row, col) respecte les regles du sudoku."""
-        # Vérification ligne
+        """Check if placing num at (row, col) respects sudoku rules."""
         if num in self.grid[row]:
             return False
 
@@ -55,14 +55,14 @@ class SudokuGrid:
         return True
 
     def is_complete(self) -> bool:
-        """Retourne True si la grille n'a plus de case vide (0)."""
+        """Return True if the grid has no empty cells (0)."""
         for row in self.grid:
             if 0 in row:
                 return False
         return True
 
     def display(self) -> None:
-        """Affiche la grille dans le terminal avec distinction original/ajoute."""
+        """Display the grid in the terminal with original/added distinction."""
         for r in range(9):
             if r > 0 and r % 3 == 0:
                 print("------+-------+------")
@@ -83,11 +83,32 @@ class SudokuGrid:
             print(row_str)
 
     def solve_brute_force(self) -> bool:
-        """Resout par force brute. Retourne True si solution trouvee."""
-        # is_valid est passé en callback : le solveur l'appelle avant de placer chaque valeur
-        return brute_force(self.grid, self.is_valid)
+        """Solve by brute force. Returns True if a solution is found."""
+        return brute_force_with_callback(self.grid, self.is_valid)
 
     def solve_backtracking(self) -> bool:
-        """Resout par backtracking. Retourne True si solution trouvee."""
-        # is_valid est passé en callback : le solveur l'appelle avant de placer chaque valeur
-        return backtracking(self.grid, self.is_valid)
+        """Solve by backtracking. Returns True if a solution is found."""
+        return backtracking_with_callback(self.grid, self.is_valid)
+
+    def solve_brute_force_animated(self, callback=None) -> bool:
+        """Brute force with callback for animation + 30s timeout."""
+        return brute_force_with_callback(self.grid, self.is_valid, callback)
+
+    def solve_backtracking_animated(self, callback=None) -> bool:
+        """Backtracking with callback for animation."""
+        return backtracking_with_callback(self.grid, self.is_valid, callback)
+
+    def solve_backtracking_mrv(self, callback=None) -> bool:
+        """Improved backtracking with MRV heuristic (Minimum Remaining Values).
+        Picks the cell with the fewest candidates at each step."""
+        return backtracking_mrv(self.grid, self.is_valid, callback)
+
+    def solve_propagation(self, callback=None) -> bool:
+        """AC-3 constraint propagation (naked + hidden singles).
+        No search: may fail on hard grids."""
+        return constraint_propagation(self.grid, self.is_valid, callback)
+
+    def solve_propagation_mrv(self, callback=None) -> bool:
+        """AC-3 propagation + MRV backtracking (Norvig approach).
+        Solves virtually any valid grid in under 1 ms."""
+        return propagation_mrv(self.grid, self.is_valid, callback)
