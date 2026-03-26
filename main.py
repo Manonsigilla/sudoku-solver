@@ -1,12 +1,46 @@
 import argparse
 import sys
 import os
+import pygame
 from script import SudokuGrid
-from display import draw_sudoku_interactive
+from display import draw_sudoku_interactive, show_main_menu, show_difficulty_menu, play_game, main_menu
 
 def main() -> None:
     """Main entry point for the Sudoku solver CLI."""
-    # 1. Set up the argument parser for the CLI
+    
+    # Show main menu first
+    main_choice = show_main_menu()
+    
+    if main_choice == "1":
+        # Play mode
+        while True:
+            diff_choice = show_difficulty_menu()
+            if diff_choice == "1":
+                play_game("easy")
+            elif diff_choice == "2":
+                play_game("normal")
+            elif diff_choice == "3":
+                play_game("hard")
+            elif diff_choice == "4":
+                break
+            else:
+                print("Invalid choice")
+        return
+    
+    elif main_choice == "2":
+        # Automatic solver mode (existing code)
+        pass  # Continue with argparse below
+    
+    elif main_choice == "3":
+        print("Goodbye!")
+        sys.exit(0)
+    
+    else:
+        print("Invalid choice")
+        return
+    
+    # === AUTOMATIC SOLVER MODE (existing code) ===
+    
     parser = argparse.ArgumentParser(description="Sudoku Solver CLI")
 
     # Required argument: path to the grid file
@@ -46,8 +80,7 @@ def main() -> None:
         from results_window import show_results
         grid_file_name = os.path.basename(args.grid_file)
 
-        # List of algorithms to benchmark with their solve method
-        # Each tuple: (algo_name, display_name, SudokuGrid_method)
+        # List of algorithms to benchmark
         algos = [
             ("brute", "Brute Force",
              lambda cb: sudoku.solve_brute_force_animated(cb)),
@@ -75,7 +108,6 @@ def main() -> None:
                 result["time_ms"], result["iterations"], status))
 
         print("--- Results saved to results.db ---")
-        # Open the matplotlib window with results
         show_results()
         return
 
@@ -83,7 +115,7 @@ def main() -> None:
         draw_sudoku_interactive(sudoku)
         return
 
-    # 3. Terminal-only mode: solve the grid using Block 2
+    # 3. Terminal-only mode: solve the grid
     print(f"Solving using {args.algo} algorithm...")
     success = False
 
@@ -101,10 +133,9 @@ def main() -> None:
     # 4. Display the results
     if success:
         print("Sudoku solved successfully!")
-        # Terminal display (from Block 1)
         sudoku.display()
     else:
         print("Failed to solve the Sudoku. The grid might be invalid or unsolvable.")
 
 if __name__ == "__main__":
-    main()
+    main_menu()

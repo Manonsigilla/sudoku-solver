@@ -509,3 +509,7 @@ def propagation_mrv(grid, is_valid_func, callback=None):
         return False
 
     return solve(candidates, grid)
+
+# Backward compatibility aliases
+brute_force = brute_force_with_callback
+backtracking = backtracking_with_callback
