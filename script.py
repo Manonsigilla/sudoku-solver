@@ -1,9 +1,3 @@
-# [ORIGINAL] from solver import brute_force, backtracking
-# [ORIGINAL] from algorithms import (backtracking_mrv, constraint_propagation,
-#                                     propagation_mrv, brute_force_with_callback,
-#                                     backtracking_with_callback)
-
-# [MODIFIED] All algorithms consolidated into solver.py
 from solver import (brute_force_with_callback, backtracking_with_callback,
                     backtracking_mrv, constraint_propagation, propagation_mrv)
 
@@ -82,15 +76,12 @@ class SudokuGrid:
 
     def solve_brute_force(self) -> bool:
         """Solve by brute force. Returns True if a solution is found."""
-        # [ORIGINAL] return brute_force(self.grid, self.is_valid)
         return brute_force_with_callback(self.grid, self.is_valid)
 
     def solve_backtracking(self) -> bool:
         """Solve by backtracking. Returns True if a solution is found."""
-        # [ORIGINAL] return backtracking(self.grid, self.is_valid)
         return backtracking_with_callback(self.grid, self.is_valid)
 
-    # [ADDED] Animated wrappers for existing algorithms (with callback)
     def solve_brute_force_animated(self, callback=None) -> bool:
         """Brute force with callback for animation + 30s timeout."""
         return brute_force_with_callback(self.grid, self.is_valid, callback)
@@ -99,7 +90,6 @@ class SudokuGrid:
         """Backtracking with callback for animation."""
         return backtracking_with_callback(self.grid, self.is_valid, callback)
 
-    # [ADDED] New algorithms
     def solve_backtracking_mrv(self, callback=None) -> bool:
         """Improved backtracking with MRV heuristic (Minimum Remaining Values).
         Picks the cell with the fewest candidates at each step."""

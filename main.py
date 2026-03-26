@@ -1,11 +1,7 @@
 import argparse
 import sys
 import os
-# Import classes and functions from your teammates' files
-# (We assume script.py and solver.py are in the same directory)
 from script import SudokuGrid
-# [ORIGINAL] from display import draw_sudoku_window
-# [MODIFIED] Import the new interactive window
 from display import draw_sudoku_interactive
 
 def main() -> None:
@@ -16,8 +12,6 @@ def main() -> None:
     # Required argument: path to the grid file
     parser.add_argument("grid_file", type=str, help="Path to the text file containing the Sudoku grid")
 
-    # [ORIGINAL] --algo choices=["brute", "backtrack"]
-    # [MODIFIED] Extended choices with all 5 available algorithms
     parser.add_argument("--algo", type=str,
                         choices=["brute", "backtrack", "backtrack_mrv",
                                  "propagation", "propagation_mrv"],
@@ -26,7 +20,6 @@ def main() -> None:
     parser.add_argument("--gui", action="store_true",
                         help="Display the grid using Pygame after solving")
 
-    # [ADDED] New flags for benchmarking and results display
     parser.add_argument("--benchmark", action="store_true",
                         help="Run all algorithms on the grid, save results to SQLite, show charts")
     parser.add_argument("--results", action="store_true",
@@ -35,7 +28,6 @@ def main() -> None:
     # Parse the arguments
     args = parser.parse_args()
 
-    # [ADDED] --results: show historical results and exit
     if args.results:
         from results_window import show_results
         show_results()
@@ -49,7 +41,6 @@ def main() -> None:
         print(f"Error loading the grid: {e}")
         sys.exit(1)
 
-    # [ADDED] --benchmark: run all algorithms, save results, show charts
     if args.benchmark:
         from benchmark import run_benchmark
         from results_window import show_results
@@ -88,8 +79,6 @@ def main() -> None:
         show_results()
         return
 
-    # [MODIFIED] If GUI mode, skip solving and open the interactive window directly.
-    # The GUI handles solving via buttons (Solve, Reset, Algo selection).
     if args.gui:
         draw_sudoku_interactive(sudoku)
         return
@@ -98,13 +87,6 @@ def main() -> None:
     print(f"Solving using {args.algo} algorithm...")
     success = False
 
-    # [ORIGINAL] Dispatch for the 2 original algorithms:
-    # if args.algo == "brute":
-    #     success = sudoku.solve_brute_force()
-    # elif args.algo == "backtrack":
-    #     success = sudoku.solve_backtracking()
-
-    # [MODIFIED] Extended dispatch for all 5 algorithms
     if args.algo == "brute":
         success = sudoku.solve_brute_force()
     elif args.algo == "backtrack":

@@ -202,10 +202,8 @@ def show_results():
 
     plt.tight_layout()
 
-    # [MODIFIED] Save chart to temp file and open with system viewer.
-    # This avoids conflicts with Pygame's display ownership (plt.show()
-    # fails when called from inside a Pygame event loop).
-    # [ORIGINAL] plt.show()
+    # Save chart to temp file and open with system viewer
+    # (plt.show() conflicts with Pygame's display ownership)
     tmp_path = os.path.join(tempfile.gettempdir(), "sudoku_results.png")
     fig.savefig(tmp_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
