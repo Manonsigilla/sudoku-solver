@@ -2,16 +2,6 @@ import pygame
 import sys
 import time
 
-# =============================================================================
-# [ORIGINAL] Original constants (pre-existing code)
-# WINDOW_SIZE = 540
-# CELL_SIZE = WINDOW_SIZE // 9
-# BACKGROUND_COLOR = (255, 255, 255)
-# LINE_COLOR = (0, 0, 0)
-# NUMBER_COLOR = (0, 0, 0)
-# =============================================================================
-
-# [MODIFIED] Updated constants for the interactive window
 GRID_SIZE = 540                    # Grid drawing area (unchanged)
 WINDOW_SIZE = GRID_SIZE            # Alias for compatibility with draw_grid_lines
 CELL_SIZE = GRID_SIZE // 9         # 60 pixels per cell
@@ -23,8 +13,7 @@ PANEL_X = GRID_SIZE + 15           # X position of the side panel start
 BACKGROUND_COLOR = (255, 255, 255)  # White
 LINE_COLOR = (0, 0, 0)              # Black
 
-# [ADDED] Colors for original/solved distinction and visual indicators
-# [ORIGINAL] NUMBER_COLOR = (0, 0, 0)  -- replaced by the colors below
+# Colors for original/solved distinction and visual indicators
 ORIGINAL_COLOR = (0, 0, 0)         # Black: digits present in the initial grid
 SOLVED_COLOR = (0, 0, 200)         # Blue: digits placed by the algorithm
 CURRENT_COLOR = (255, 255, 100)    # Yellow: cell currently being processed
@@ -37,7 +26,7 @@ SOLVE_BUTTON_TEXT = (255, 255, 255)    # White: Solve button text
 
 
 # =============================================================================
-# [ADDED] Button class -- clickable button for the Pygame interface
+# Button class
 # =============================================================================
 
 class Button:
@@ -74,7 +63,7 @@ class Button:
 
 
 # =============================================================================
-# Existing function UNCHANGED: draw_grid_lines
+# Grid drawing functions
 # =============================================================================
 
 def draw_grid_lines(screen):
@@ -89,27 +78,6 @@ def draw_grid_lines(screen):
         pygame.draw.line(screen, LINE_COLOR, (0, i * CELL_SIZE), (WINDOW_SIZE, i * CELL_SIZE), thickness)
 
 
-# =============================================================================
-# [ORIGINAL] draw_numbers function (pre-existing code, commented)
-# =============================================================================
-# def draw_numbers(screen, grid):
-#     """Draws the numbers from the 2D array onto the Pygame screen."""
-#     font = pygame.font.SysFont("arial", 40)
-#
-#     for row in range(9):
-#         for col in range(9):
-#             num = grid[row][col]
-#             if num != 0:
-#                 text_surface = font.render(str(num), True, NUMBER_COLOR)
-#                 text_rect = text_surface.get_rect()
-#                 text_rect.center = (col * CELL_SIZE + CELL_SIZE // 2,
-#                                     row * CELL_SIZE + CELL_SIZE // 2)
-#                 screen.blit(text_surface, text_rect)
-
-
-# =============================================================================
-# [ADDED] draw_numbers_colored -- replacement with color distinction
-# =============================================================================
 
 def draw_numbers_colored(screen, sudoku, current_cell=None, backtrack_cell=None):
     """Draw the grid numbers with visual distinction:
@@ -161,10 +129,6 @@ def draw_numbers_colored(screen, sudoku, current_cell=None, backtrack_cell=None)
             screen.blit(text_surface, text_rect)
 
 
-# =============================================================================
-# [ADDED] draw_iteration_counter -- real-time iteration counter
-# =============================================================================
-
 def draw_iteration_counter(screen, iterations, elapsed_ms=0.0):
     """Display the iteration counter and elapsed time below the grid."""
     font = pygame.font.SysFont("arial", 18)
@@ -179,10 +143,6 @@ def draw_iteration_counter(screen, iterations, elapsed_ms=0.0):
         screen.blit(time_surface, (250, GRID_SIZE + 10))
 
 
-# =============================================================================
-# [ADDED] draw_algo_info -- display the selected algorithm name
-# =============================================================================
-
 def draw_algo_info(screen, algo_name):
     """Display the selected algorithm name in the side panel."""
     font_small = pygame.font.SysFont("arial", 12)
@@ -194,34 +154,7 @@ def draw_algo_info(screen, algo_name):
 
 
 # =============================================================================
-# [ORIGINAL] draw_sudoku_window function (pre-existing code, commented)
-# =============================================================================
-# def draw_sudoku_window(grid):
-#     """
-#     Initializes Pygame, draws the solved grid, and waits for the user
-#     to close the window.
-#     """
-#     pygame.init()
-#
-#     screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
-#     pygame.display.set_caption("Sudoku Solver")
-#
-#     running = True
-#     while running:
-#         for event in pygame.event.get():
-#             if event.type == pygame.QUIT:
-#                 running = False
-#
-#         screen.fill(BACKGROUND_COLOR)
-#         draw_grid_lines(screen)
-#         draw_numbers(screen, grid)
-#         pygame.display.flip()
-#
-#     pygame.quit()
-
-
-# =============================================================================
-# [ADDED] Available algorithms list
+# Available algorithms and interactive window
 # =============================================================================
 
 ALGO_LIST = [
@@ -232,10 +165,6 @@ ALGO_LIST = [
     ("propagation_mrv", "AC-3+MRV"),
 ]
 
-
-# =============================================================================
-# [ADDED] draw_sudoku_interactive -- main interactive Pygame window
-# =============================================================================
 
 def draw_sudoku_interactive(sudoku):
     """Interactive Pygame window with Solve, Reset, algorithm selector,
