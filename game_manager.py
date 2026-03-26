@@ -183,7 +183,7 @@ def get_or_generate_puzzle(difficulty: str) -> tuple[list[list[int]], list[list[
                 # Use the solver to find the complete solution
                 success = propagation_mrv(solved_grid, sudoku.is_valid)
                 if success:
-                    db[grid_key] = solved_grid
+                    db[grid_key] = grid_to_string(solved_grid)
                     save_solutions_db(db)
                     return puzzle_grid, solved_grid
                 else:
@@ -194,7 +194,7 @@ def get_or_generate_puzzle(difficulty: str) -> tuple[list[list[int]], list[list[
     # Generate new puzzle
     puzzle_grid, solved_grid = generate_new_puzzle(difficulty)
     grid_key = grid_to_string(puzzle_grid)
-    db[grid_key] = solved_grid
+    db[grid_key] = grid_to_string(solved_grid)
     save_solutions_db(db)
     return puzzle_grid, solved_grid
 
