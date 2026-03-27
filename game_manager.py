@@ -1,27 +1,22 @@
 import json
 import random
 import os
-import copy
-from script import SudokuGrid
-from solver import propagation_mrv
+from script import SudokuGrid, count_empty_cells
+from solver import propagation_mrv, build_candidates
 
 # Game constants
 EASY_MIN, EASY_MAX = 36, 50          # Easy: 36-50 filled cells
 NORMAL_MIN, NORMAL_MAX = 27, 35      # Normal: 27-35 filled cells
 HARD_MIN, HARD_MAX = 17, 26          # Hard: 17-26 filled cells
 
-SOLUTIONS_FILE = "solutions.json"
-GRIDS_DIR = "grids"
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SOLUTIONS_FILE = os.path.join(_BASE_DIR, "solutions.json")
+GRIDS_DIR = os.path.join(_BASE_DIR, "grids")
 
 
 def count_filled_cells(grid: list[list[int]]) -> int:
     """Count non-zero cells in a grid."""
-    count = 0
-    for row in grid:
-        for cell in row:
-            if cell != 0:
-                count += 1
-    return count
+    return 81 - count_empty_cells(grid)
 
 
 def get_grid_difficulty(grid: list[list[int]]) -> str:
@@ -42,7 +37,7 @@ def load_solutions_db() -> dict:
     """Load solutions from JSON file. Create if doesn't exist."""
     if os.path.exists(SOLUTIONS_FILE):
         try:
-            with open(SOLUTIONS_FILE, "r") as f:
+            with open(SOLUTIONS_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, IOError):
             return {}
@@ -50,9 +45,11 @@ def load_solutions_db() -> dict:
 
 
 def save_solutions_db(db: dict) -> None:
-    """Save solutions to JSON file."""
-    with open(SOLUTIONS_FILE, "w") as f:
+    """Save solutions to JSON file (atomic write-then-rename)."""
+    tmp_path = SOLUTIONS_FILE + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(db, f, indent=2)
+    os.replace(tmp_path, SOLUTIONS_FILE)
 
 
 def grid_to_string(grid: list[list[int]]) -> str:
@@ -74,7 +71,7 @@ def generate_solved_grid() -> list[list[int]]:
         if num in grid[row]:
             return False
         # Check column
-        if num in [grid[r][col] for r in range(9)]:
+        if any(grid[r][col] == num for r in range(9)):
             return False
         # Check 3x3 block
         start_row, start_col = (row // 3) * 3, (col // 3) * 3
@@ -104,10 +101,56 @@ def generate_solved_grid() -> list[list[int]]:
     return grid
 
 
+def _is_valid_placement(grid, row, col, num):
+    """Check if placing num at (row, col) is valid (no conflict)."""
+    if num in grid[row]:
+        return False
+    if any(grid[r][col] == num for r in range(9)):
+        return False
+    br, bc = (row // 3) * 3, (col // 3) * 3
+    for r in range(br, br + 3):
+        for c in range(bc, bc + 3):
+            if grid[r][c] == num:
+                return False
+    return True
+
+
+def _count_solutions(grid, limit=2):
+    """Count solutions of grid, stopping early at limit.
+    Returns count (0, 1, or up to limit)."""
+    count = [0]
+
+    def _solve(g):
+        empty = None
+        for r in range(9):
+            for c in range(9):
+                if g[r][c] == 0:
+                    empty = (r, c)
+                    break
+            if empty:
+                break
+        if empty is None:
+            count[0] += 1
+            return count[0] >= limit
+        r, c = empty
+        for num in range(1, 10):
+            if _is_valid_placement(g, r, c, num):
+                g[r][c] = num
+                if _solve(g):
+                    g[r][c] = 0
+                    return True
+                g[r][c] = 0
+        return False
+
+    _solve([row[:] for row in grid])
+    return count[0]
+
+
 def remove_cells(grid: list[list[int]], target_difficulty: str) -> list[list[int]]:
-    """Remove cells from a solved grid to create a puzzle of target difficulty."""
+    """Remove cells from a solved grid to create a puzzle of target difficulty.
+    Ensures the resulting puzzle has exactly one solution."""
     puzzle = [row[:] for row in grid]
-    
+
     # Determine target number of filled cells
     if target_difficulty == "easy":
         target = random.randint(EASY_MIN, EASY_MAX)
@@ -117,19 +160,23 @@ def remove_cells(grid: list[list[int]], target_difficulty: str) -> list[list[int
         target = random.randint(HARD_MIN, HARD_MAX)
     else:
         target = 30
-    
+
     # Currently all 81 cells are filled, remove until target
     cells_to_remove = 81 - target
     positions = [(r, c) for r in range(9) for c in range(9)]
     random.shuffle(positions)
-    
+
     removed = 0
     for row, col in positions:
         if removed >= cells_to_remove:
             break
+        saved = puzzle[row][col]
         puzzle[row][col] = 0
-        removed += 1
-    
+        if _count_solutions(puzzle, limit=2) != 1:
+            puzzle[row][col] = saved  # Restore: removal breaks uniqueness
+        else:
+            removed += 1
+
     return puzzle
 
 
@@ -160,8 +207,8 @@ def get_or_generate_puzzle(difficulty: str) -> tuple[list[list[int]], list[list[
                     diff = get_grid_difficulty(sudoku.grid)
                     if diff == difficulty:
                         available_grids.append(filepath)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"[WARN] Skipping grid file {filename}: {e}")
     
     # If we found a grid of the right difficulty, use it
     if available_grids:
@@ -197,41 +244,6 @@ def get_or_generate_puzzle(difficulty: str) -> tuple[list[list[int]], list[list[
     db[grid_key] = grid_to_string(solved_grid)
     save_solutions_db(db)
     return puzzle_grid, solved_grid
-
-
-def build_candidates(grid: list[list[int]]) -> dict:
-    """
-    Build candidate set for each empty cell (Option B).
-    Returns dict: {(row, col): set(valid_digits)}
-    """
-    candidates = {}
-    
-    for row in range(9):
-        for col in range(9):
-            if grid[row][col] == 0:
-                # Get all valid candidates for this cell
-                possible = set(range(1, 10))
-                
-                # Remove digits in same row
-                for c in range(9):
-                    if grid[row][c] != 0:
-                        possible.discard(grid[row][c])
-                
-                # Remove digits in same column
-                for r in range(9):
-                    if grid[r][col] != 0:
-                        possible.discard(grid[r][col])
-                
-                # Remove digits in same 3x3 block
-                start_row, start_col = (row // 3) * 3, (col // 3) * 3
-                for r in range(start_row, start_row + 3):
-                    for c in range(start_col, start_col + 3):
-                        if grid[r][c] != 0:
-                            possible.discard(grid[r][c])
-                
-                candidates[(row, col)] = possible
-    
-    return candidates
 
 
 def validate_move(grid: list[list[int]], solved_grid: list[list[int]], 
