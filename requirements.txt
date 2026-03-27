@@ -1,5 +1,6 @@
 # Pygame
 pygame>=2.6.0
 
-# Matplotlib
+# Matplotlib + NumPy
 matplotlib>=3.5.0
+numpy>=1.21.0

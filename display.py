@@ -6,6 +6,8 @@ import math
 import os
 from game_manager import get_or_generate_puzzle, build_candidates, validate_move
 
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 WINDOW_SIZE = 540
 CELL_SIZE = WINDOW_SIZE // 9
 
@@ -20,10 +22,45 @@ COLOR_BUTTON_BG = (50, 50, 50)
 COLOR_BUTTON_HOVER = (100, 100, 100)
 COLOR_CELL_BORDER = (100, 100, 100)
 
+# Centralized algorithm color palette (used by display and results_window)
+ALGO_PALETTE = {
+    "brute":           {"rgb": (231, 76, 60),   "hex": "#e74c3c"},   # Red
+    "backtrack":       {"rgb": (52, 152, 219),  "hex": "#3498db"},   # Blue
+    "backtrack_mrv":   {"rgb": (46, 204, 113),  "hex": "#2ecc71"},   # Green
+    "propagation":     {"rgb": (155, 89, 182),  "hex": "#9b59b6"},   # Purple
+    "propagation_mrv": {"rgb": (243, 156, 18),  "hex": "#f39c12"},   # Orange
+}
+
 HARD_MODE_COLORS = [
     (144, 238, 144), (255, 192, 192), (255, 255, 153), (220, 220, 220),
     (200, 230, 255), (255, 228, 225), (240, 255, 240), (245, 245, 220),
 ]
+
+# Font cache with cross-platform fallback (arial may be absent on Linux)
+_PREFERRED_FONTS = ["arial", "freesansbold", "dejavusans", "liberationsans"]
+_font_cache = {}
+_resolved_font_name = None
+
+
+def _get_font(size, bold=False):
+    """Return a cached font with cross-platform fallback."""
+    global _resolved_font_name
+    key = (size, bold)
+    if key not in _font_cache:
+        if _resolved_font_name is None:
+            available = pygame.font.get_fonts()
+            for name in _PREFERRED_FONTS:
+                if name in available:
+                    _resolved_font_name = name
+                    break
+            if _resolved_font_name is None:
+                _resolved_font_name = ""  # Will use pygame default
+        if _resolved_font_name:
+            _font_cache[key] = pygame.font.SysFont(_resolved_font_name, size, bold)
+        else:
+            _font_cache[key] = pygame.font.Font(None, size)
+    return _font_cache[key]
+
 
 class Button:
     def __init__(self, x, y, width, height, text):
@@ -61,16 +98,11 @@ class GameState:
     def generate_hard_mode_colors(self):
         self.hard_mode_cell_colors = {(r, c): random.choice(HARD_MODE_COLORS) for r in range(9) for c in range(9)}
     
-    def randomize_hard_colors(self):
-        self.generate_hard_mode_colors()
-    
     def select_cell(self, row: int, col: int):
         if 0 <= row < 9 and 0 <= col < 9:
             self.selected_cell = (row, col)
     
     def add_to_stash(self, num: int):
-        if not self.selected_cell:
-            return False
         row, col = self.selected_cell
         if self.difficulty == "hard":
             return False
@@ -87,8 +119,6 @@ class GameState:
         return True
     
     def validate_move(self, num: int):
-        if not self.selected_cell:
-            return False
         row, col = self.selected_cell
         if self.original_grid[row][col] != 0:
             return False
@@ -103,7 +133,7 @@ class GameState:
             if self.selected_cell in self.stash:
                 del self.stash[self.selected_cell]
             if self.difficulty == "hard":
-                self.randomize_hard_colors()
+                self.generate_hard_mode_colors()
             return True
         elif status == "multiple" and self.difficulty == "easy":
             self.cell_status[(row, col)] = "multiple"
@@ -119,8 +149,8 @@ def main_menu():
     pygame.init()
     screen = pygame.display.set_mode((540, 300))
     pygame.display.set_caption("Sudoku Solver - Menu")
-    font_large = pygame.font.SysFont("arial", 48)
-    font_small = pygame.font.SysFont("arial", 24)
+    font_large = _get_font(48)
+    font_small = _get_font(24)
     
     play_btn = Button(170, 80, 200, 50, "PLAY")
     solver_btn = Button(170, 150, 200, 50, "SOLVER")
@@ -158,8 +188,8 @@ def difficulty_menu():
     screen = pygame.display.get_surface()
     pygame.display.set_mode((540, 300))
     pygame.display.set_caption("Sudoku - Difficulty")
-    font_large = pygame.font.SysFont("arial", 48)
-    font_small = pygame.font.SysFont("arial", 24)
+    font_large = _get_font(48)
+    font_small = _get_font(24)
     
     easy_btn = Button(170, 80, 200, 50, "EASY")
     normal_btn = Button(170, 150, 200, 50, "NORMAL")
@@ -207,12 +237,12 @@ def difficulty_menu():
 
 def solver_menu_pygame():
     pygame.display.set_caption("Sudoku - Solver")
-    font = pygame.font.SysFont("arial", 20)
-    font_title = pygame.font.SysFont("arial", 28, bold=True)
-    font_section = pygame.font.SysFont("arial", 18, bold=True)
+    font = _get_font(20)
+    font_title = _get_font(28, bold=True)
+    font_section = _get_font(18, bold=True)
     
-    import os
-    grid_files = sorted([f for f in os.listdir("grids") if f.endswith(".txt")])
+    grids_dir = os.path.join(_BASE_DIR, "grids")
+    grid_files = sorted([f for f in os.listdir(grids_dir) if f.endswith(".txt")])
     if not grid_files:
         return
     
@@ -279,7 +309,7 @@ def solver_menu_pygame():
                 
                 # SOLVE button only works when both are selected
                 if solve_btn.is_clicked(event.pos) and selected_grid and selected_algo:
-                    run_solver(f"grids/{selected_grid}", selected_algo)
+                    run_solver(os.path.join(_BASE_DIR, "grids", selected_grid), selected_algo)
                 
                 # Results button
                 if results_btn.is_clicked(event.pos):
@@ -330,49 +360,33 @@ class _SolverAborted(Exception):
     """Raised when user presses ESC or closes window during solving."""
     pass
 
-def run_solver(filepath, algo):
-    from script import SudokuGrid
-    from solver import (brute_force_with_callback, backtracking_with_callback,
-                        backtracking_mrv, constraint_propagation, propagation_mrv)
-    
-    # Map display names to solver functions
-    algo_map = {
-        "Brute Force": brute_force_with_callback,
-        "Backtracking": backtracking_with_callback,
-        "Backtracking MRV": backtracking_mrv,
-        "Constraint Propagation": constraint_propagation,
-        "Propagation MRV": propagation_mrv,
-    }
-    
-    sudoku = SudokuGrid(filepath)
-    screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
-    pygame.display.set_caption(f"Solving - {algo}...")
-    clock = pygame.time.Clock()
-    font_large = pygame.font.SysFont("arial", 36)
-    font_status = pygame.font.SysFont("arial", 20)
-    
-    # Step counter for throttled rendering
+_ALGO_MAP_DISPLAY_TO_KEY = {
+    "Brute Force": "brute",
+    "Backtracking": "backtrack",
+    "Backtracking MRV": "backtrack_mrv",
+    "Constraint Propagation": "propagation",
+    "Propagation MRV": "propagation_mrv",
+}
+
+
+def _execute_solver(sudoku, algo_func, screen, clock):
+    """Run the solver with animated callback. Returns (success, steps, cpu_time)
+    or raises _SolverAborted if the user cancels."""
+    font_large = _get_font(36)
+    font_status = _get_font(20)
     step_count = [0]
-    UPDATE_EVERY = 10  # Redraw every N solver steps
-    
+    UPDATE_EVERY = 10
+
     def solver_callback(row, col, num, action):
-        """Called by the solver on each place/remove step.
-        Processes events to keep the window responsive and
-        redraws the grid periodically for a live animation."""
         step_count[0] += 1
-        
         if step_count[0] % UPDATE_EVERY != 0:
             return
-        
-        # Process Pygame events to prevent "not responding"
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 raise _SolverAborted()
-        
-        # Redraw the grid to show progress
         screen.fill(COLOR_WHITE)
         draw_solver_grid(screen, sudoku, font_large)
         status = font_status.render(
@@ -380,58 +394,45 @@ def run_solver(filepath, algo):
         )
         screen.blit(status, (10, WINDOW_SIZE - 30))
         pygame.display.flip()
-        time.sleep(0.1) # Slow down for visibility; remove or adjust as needed
-    
-    algo_func = algo_map.get(algo, propagation_mrv)
-    
-    start_time_perf = pygame.time.get_ticks()
-    
+        pygame.time.delay(100)
+
+    start_cpu = time.process_time()
+    success = algo_func(sudoku.grid, sudoku.is_valid, solver_callback)
+    cpu_time = time.process_time() - start_cpu
+    return success, step_count[0], cpu_time
+
+
+def _save_solver_benchmark(grid_name, algo_key, solve_duration, step_count, sudoku):
+    """Save benchmark result to the database."""
     try:
-        success = algo_func(sudoku.grid, sudoku.is_valid, solver_callback)
-    except _SolverAborted:
-        return
-    
-    end_time_perf = pygame.time.get_ticks()
-    solve_duration = (end_time_perf - start_time_perf) / 1000.0
-    
-    # Save benchmark
-    from benchmark import run_benchmark
-    
-    grid_name = os.path.basename(filepath)
-    # run_benchmark(grid, original, algo_name, solve_func, grid_file)
-    
-    try:
-        # Map display names to algo_name for database
-        algo_key = {
-            "Brute Force": "brute",
-            "Backtracking": "backtrack",
-            "Backtracking MRV": "backtrack_mrv",
-            "Constraint Propagation": "propagation",
-            "Propagation MRV": "propagation_mrv",
-        }.get(algo, "unknown")
-        
-        # Count empty cells
-        cells_empty = sum(1 for r in sudoku.original for c in r if c == 0)
-        
-        # Save directly to benchmark
-        import sqlite3
-        from benchmark import DB_PATH, _init_db
-        _init_db()
-        conn = sqlite3.connect(DB_PATH)
-        conn.execute(
-            "INSERT INTO benchmarks (grid_file, algo, time_ms, iterations, cells_empty, solved) VALUES (?, ?, ?, ?, ?, ?)",
-            (grid_name, algo_key, solve_duration * 1000, step_count[0], cells_empty, int(success))
-        )
-        conn.commit()
-        conn.close()
-        print(f"[BENCHMARK] Saved: {grid_name} | {algo} | {solve_duration*1000:.1f}ms | {step_count[0]} iterations")
+        from benchmark import save_result
+        from script import count_empty_cells
+        cells_empty = count_empty_cells(sudoku.original)
+        save_result(grid_name, algo_key, solve_duration * 1000,
+                    step_count, cells_empty, 1)
+        print(f"[BENCHMARK] Saved: {grid_name} | {algo_key} | {solve_duration*1000:.1f}ms | {step_count} iterations")
     except Exception as e:
         print(f"[ERROR] Benchmark save failed: {e}")
-    
-    # Show final result
+
+
+def _show_solver_result(screen, sudoku, success, step_count, solve_duration,
+                        grid_name, algo_key):
+    """Display the solver result screen until user presses ESC."""
+    clock = pygame.time.Clock()
+    font_large = _get_font(36)
+    font_status = _get_font(20)
+    title_font = _get_font(24, bold=True)
     result_text = "SOLVED!" if success else "NO SOLUTION FOUND"
-    pygame.display.set_caption(f"Solver - {algo} - {result_text}")
-    
+
+    # Query best time from database
+    try:
+        from benchmark import get_results_by_grid
+        grid_results = get_results_by_grid(grid_name)
+        algo_times = [r["time_ms"] for r in grid_results if r["algo"] == algo_key]
+        best_time_ms = min(algo_times) if algo_times else solve_duration * 1000
+    except Exception:
+        best_time_ms = solve_duration * 1000
+
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -439,48 +440,85 @@ def run_solver(filepath, algo):
                 sys.exit()
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
-        
+
         screen.fill(COLOR_WHITE)
         draw_solver_grid(screen, sudoku, font_large)
-        
-        # Display main result
+
         title_color = (0, 180, 0) if success else (200, 0, 0)
-        title = pygame.font.SysFont("arial", 24, bold=True).render(
-            f"{result_text}", True, title_color
-        )
+        title = title_font.render(result_text, True, title_color)
         screen.blit(title, (WINDOW_SIZE // 2 - title.get_width() // 2, 10))
-        
-        # Display stats
+
         stats_line = font_status.render(
-            f"Steps: {step_count[0]}   Time: {solve_duration:.3f}s", True, (50, 50, 50)
+            f"Steps: {step_count}   Time: {solve_duration:.3f}s", True, (50, 50, 50)
         )
         screen.blit(stats_line, (WINDOW_SIZE // 2 - stats_line.get_width() // 2, 45))
-        
-        # Display Best Time
+
         best_line = font_status.render(
-            f"Time: {solve_duration:.3f}s", True, (130, 30, 30)
+            f"Best: {best_time_ms:.1f}ms", True, (130, 30, 30)
         )
         screen.blit(best_line, (WINDOW_SIZE // 2 - best_line.get_width() // 2, 70))
-        
+
         footer = font_status.render("Press ESC to go back", True, (150, 150, 150))
         screen.blit(footer, (WINDOW_SIZE // 2 - footer.get_width() // 2, WINDOW_SIZE - 30))
-        
+
         pygame.display.flip()
         clock.tick(60)
+
+
+def run_solver(filepath, algo):
+    """Orchestrate solving: execute algorithm, save benchmark, show result."""
+    from script import SudokuGrid
+    from solver import (brute_force_with_callback, backtracking_with_callback,
+                        backtracking_mrv, constraint_propagation, propagation_mrv)
+
+    algo_funcs = {
+        "Brute Force": brute_force_with_callback,
+        "Backtracking": backtracking_with_callback,
+        "Backtracking MRV": backtracking_mrv,
+        "Constraint Propagation": constraint_propagation,
+        "Propagation MRV": propagation_mrv,
+    }
+
+    sudoku = SudokuGrid(filepath)
+    screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
+    pygame.display.set_caption(f"Solving - {algo}...")
+    clock = pygame.time.Clock()
+
+    algo_func = algo_funcs.get(algo, propagation_mrv)
+    algo_key = _ALGO_MAP_DISPLAY_TO_KEY.get(algo, "unknown")
+
+    try:
+        success, steps, cpu_time = _execute_solver(sudoku, algo_func, screen, clock)
+    except _SolverAborted:
+        return
+
+    grid_name = os.path.basename(filepath)
+    if success:
+        _save_solver_benchmark(grid_name, algo_key, cpu_time, steps, sudoku)
+
+    pygame.display.set_caption(f"Solver - {algo} - {'SOLVED!' if success else 'NO SOLUTION'}")
+    _show_solver_result(screen, sudoku, success, steps, cpu_time, grid_name, algo_key)
         
 def show_results_menu():
-        """Show results from SQLite benchmarks in matplotlib window."""
-        try:
-            from results_window import show_results
-            show_results()
-        except ImportError:
-            pass
+    """Show results from SQLite benchmarks in matplotlib window."""
+    try:
+        from results_window import show_results
+        show_results()
+    except ImportError as e:
+        print(f"[ERROR] Cannot display results: {e}")
+        print("[HINT] Install matplotlib and numpy: pip install matplotlib numpy")
 
-def draw_solver_grid(screen, sudoku, font):
+def _draw_grid_lines(screen):
+    """Draw the 10 horizontal and vertical lines forming the 9x9 sudoku grid.
+    Bold lines every 3 cells to delimit 3x3 blocks."""
     for i in range(10):
         thickness = 3 if i % 3 == 0 else 1
         pygame.draw.line(screen, COLOR_BLACK, (i * CELL_SIZE, 0), (i * CELL_SIZE, WINDOW_SIZE), thickness)
         pygame.draw.line(screen, COLOR_BLACK, (0, i * CELL_SIZE), (WINDOW_SIZE, i * CELL_SIZE), thickness)
+
+
+def draw_solver_grid(screen, sudoku, font):
+    _draw_grid_lines(screen)
     
     for row in range(9):
         for col in range(9):
@@ -496,8 +534,8 @@ def play_game(difficulty: str, screen):
     game_state = GameState(difficulty)
     pygame.display.set_caption(f"Sudoku - {difficulty.upper()}")
     clock = pygame.time.Clock()
-    font_large = pygame.font.SysFont("arial", 36)
-    font_small = pygame.font.SysFont("arial", 14)
+    font_large = _get_font(36)
+    font_small = _get_font(14)
     
     running = True
     while running:
@@ -562,10 +600,7 @@ def play_game(difficulty: str, screen):
         clock.tick(60)
 
 def draw_game_grid(screen, game_state, font_large, font_small):
-    for i in range(10):
-        thickness = 3 if i % 3 == 0 else 1
-        pygame.draw.line(screen, COLOR_BLACK, (i * CELL_SIZE, 0), (i * CELL_SIZE, WINDOW_SIZE), thickness)
-        pygame.draw.line(screen, COLOR_BLACK, (0, i * CELL_SIZE), (WINDOW_SIZE, i * CELL_SIZE), thickness)
+    _draw_grid_lines(screen)
     
     for row in range(9):
         for col in range(9):
@@ -606,8 +641,8 @@ def draw_game_grid(screen, game_state, font_large, font_small):
 
 def show_victory_screen():
     screen = pygame.display.get_surface()
-    font_large = pygame.font.SysFont("arial", 48)
-    font_small = pygame.font.SysFont("arial", 24)
+    font_large = _get_font(48)
+    font_small = _get_font(24)
     clock = pygame.time.Clock()
     
     # Three navigation buttons
@@ -678,7 +713,7 @@ def show_victory_screen():
         # Pulsing victory text with scale effect via font size
         pulse = math.sin(frame_count * 0.05) * 0.15 + 1.0  # scale between 0.85 and 1.15
         pulse_size = int(48 * pulse)
-        pulse_font = pygame.font.SysFont("arial", pulse_size, bold=True)
+        pulse_font = _get_font(pulse_size, bold=True)
         # Color cycles through green shades
         green_val = int(180 + 75 * math.sin(frame_count * 0.03))
         text = pulse_font.render("PUZZLE SOLVED!", True, (0, min(green_val, 255), 0))
@@ -698,7 +733,7 @@ def show_victory_screen():
         restart_btn.draw(screen, font_small)
         
         # Button labels below
-        hint_font = pygame.font.SysFont("arial", 12)
+        hint_font = _get_font(12)
         hints = [("Main Menu", menu_btn), ("Difficulty", return_btn), ("Same Level", restart_btn)]
         for hint_text, btn in hints:
             hint_surf = hint_font.render(hint_text, True, (140, 140, 140))

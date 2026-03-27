@@ -1,5 +1,14 @@
+import sys
+import os
+
 from solver import (brute_force_with_callback, backtracking_with_callback,
                     backtracking_mrv, constraint_propagation, propagation_mrv)
+
+# ANSI colors: supported natively on Linux/macOS and Windows Terminal,
+# but not on legacy cmd.exe (WT_SESSION env var indicates Windows Terminal)
+_ANSI_SUPPORTED = sys.platform != "win32" or "WT_SESSION" in os.environ
+_BLUE = "\033[94m" if _ANSI_SUPPORTED else ""
+_RESET = "\033[0m" if _ANSI_SUPPORTED else ""
 
 
 class SudokuGrid:
@@ -14,7 +23,7 @@ class SudokuGrid:
 
     def load_from_file(self, filepath: str) -> None:
         """Parse the file: '_' becomes 0, digits stay as-is."""
-        with open(filepath, "r") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             lines = f.read().splitlines()
 
         self.grid = []
@@ -25,14 +34,14 @@ class SudokuGrid:
                     row.append(0)
                 elif char.isdigit():
                     row.append(int(char))
-            # Ignorer les lignes vides ou de séparation (ex: "---+---+---")
+            # Skip empty or separator lines (e.g. "---+---+---")
             if row:
                 self.grid.append(row)
 
         if len(self.grid) != 9 or any(len(row) != 9 for row in self.grid):
-            raise ValueError(f"Grille invalide : attendu 9x9")
+            raise ValueError("Invalid grid: expected 9x9")
 
-        # Copie profonde : chaque sous-liste est dupliquée, pas juste la référence
+        # Deep copy: each sub-list is duplicated, not just the reference
         self.original = [row[:] for row in self.grid]
 
     def is_valid(self, row: int, col: int, num: int) -> bool:
@@ -40,11 +49,11 @@ class SudokuGrid:
         if num in self.grid[row]:
             return False
 
-        # Vérification colonne
-        if num in [self.grid[r][col] for r in range(9)]:
+        # Check column
+        if any(self.grid[r][col] == num for r in range(9)):
             return False
 
-        # Vérification du bloc 3x3 : calcule la case en haut à gauche du bloc
+        # Check 3x3 block
         start_row = (row // 3) * 3
         start_col = (col // 3) * 3
         for r in range(start_row, start_row + 3):
@@ -76,26 +85,18 @@ class SudokuGrid:
                 if val == 0:
                     row_str += "."
                 elif self.original[r][c] == 0:
-                    # Valeur ajoutée par le solveur : affichage en bleu (code ANSI)
-                    row_str += f"\033[94m{val}\033[0m"
+                    # Value added by the solver: display in blue
+                    row_str += f"{_BLUE}{val}{_RESET}"
                 else:
                     row_str += str(val)
             print(row_str)
 
-    def solve_brute_force(self) -> bool:
-        """Solve by brute force. Returns True if a solution is found."""
-        return brute_force_with_callback(self.grid, self.is_valid)
-
-    def solve_backtracking(self) -> bool:
-        """Solve by backtracking. Returns True if a solution is found."""
-        return backtracking_with_callback(self.grid, self.is_valid)
-
-    def solve_brute_force_animated(self, callback=None) -> bool:
-        """Brute force with callback for animation + 30s timeout."""
+    def solve_brute_force(self, callback=None) -> bool:
+        """Brute force with optional callback for animation + 30s timeout."""
         return brute_force_with_callback(self.grid, self.is_valid, callback)
 
-    def solve_backtracking_animated(self, callback=None) -> bool:
-        """Backtracking with callback for animation."""
+    def solve_backtracking(self, callback=None) -> bool:
+        """Backtracking with optional callback for animation."""
         return backtracking_with_callback(self.grid, self.is_valid, callback)
 
     def solve_backtracking_mrv(self, callback=None) -> bool:
@@ -112,3 +113,8 @@ class SudokuGrid:
         """AC-3 propagation + MRV backtracking (Norvig approach).
         Solves virtually any valid grid in under 1 ms."""
         return propagation_mrv(self.grid, self.is_valid, callback)
+
+
+def count_empty_cells(grid):
+    """Count empty cells (value 0) in a 9x9 grid."""
+    return sum(1 for row in grid for cell in row if cell == 0)

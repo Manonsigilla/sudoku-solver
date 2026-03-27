@@ -8,6 +8,7 @@
 import time
 import sqlite3
 import os
+from script import count_empty_cells
 
 # Database path (at the project root, next to main.py)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results.db")
@@ -17,27 +18,28 @@ def _init_db():
     """Create the 'benchmarks' table if it doesn't exist yet.
     Called automatically before each read/write operation."""
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS benchmarks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT DEFAULT (datetime('now')),
-            grid_file TEXT NOT NULL,
-            algo TEXT NOT NULL,
-            time_ms REAL NOT NULL,
-            iterations INTEGER NOT NULL,
-            cells_empty INTEGER NOT NULL,
-            solved INTEGER NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS benchmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT DEFAULT (datetime('now')),
+                grid_file TEXT NOT NULL,
+                algo TEXT NOT NULL,
+                time_ms REAL NOT NULL,
+                iterations INTEGER NOT NULL,
+                cells_empty INTEGER NOT NULL,
+                solved INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
 
 
-def run_benchmark(grid, original, algo_name, solve_func, grid_file):
+def run_benchmark(original, algo_name, solve_func, grid_file):
     """Run a benchmark: measure execution time and iterations of an algorithm.
 
     Parameters:
-        grid        -- the 9x9 grid (will be modified in-place by solve_func)
         original    -- the original grid (to count empty cells)
         algo_name   -- algorithm name (e.g. "brute", "backtrack", "propagation_mrv")
         solve_func  -- callable(callback) -> bool. Must accept a callback.
@@ -45,7 +47,7 @@ def run_benchmark(grid, original, algo_name, solve_func, grid_file):
 
     Returns a dict with the benchmark results."""
     # Count empty cells in the original grid
-    cells_empty = sum(1 for r in range(9) for c in range(9) if original[r][c] == 0)
+    cells_empty = count_empty_cells(original)
 
     # Iteration counter via callback
     counter = {"n": 0}
@@ -68,18 +70,25 @@ def run_benchmark(grid, original, algo_name, solve_func, grid_file):
     }
 
     # Save to SQLite
-    _init_db()
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
-        "INSERT INTO benchmarks (grid_file, algo, time_ms, iterations, cells_empty, solved) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        (grid_file, algo_name, result["time_ms"], result["iterations"],
-         cells_empty, int(solved))
-    )
-    conn.commit()
-    conn.close()
+    save_result(grid_file, algo_name, result["time_ms"],
+                result["iterations"], cells_empty, int(solved))
 
     return result
+
+
+def save_result(grid_file, algo, time_ms, iterations, cells_empty, solved):
+    """Save a single benchmark result to SQLite."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "INSERT INTO benchmarks (grid_file, algo, time_ms, iterations, cells_empty, solved) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (grid_file, algo, time_ms, iterations, cells_empty, int(solved))
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def get_all_results():
@@ -87,12 +96,14 @@ def get_all_results():
     Returns a list of dicts, sorted by timestamp descending."""
     _init_db()
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT * FROM benchmarks ORDER BY timestamp DESC"
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM benchmarks ORDER BY timestamp DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
 
 
 def get_results_by_grid(grid_file):
@@ -100,13 +111,15 @@ def get_results_by_grid(grid_file):
     Returns a list of dicts, sorted by timestamp descending."""
     _init_db()
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute(
-        "SELECT * FROM benchmarks WHERE grid_file = ? ORDER BY timestamp DESC",
-        (grid_file,)
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM benchmarks WHERE grid_file = ? ORDER BY timestamp DESC",
+            (grid_file,)
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
 
 
 def get_latest_results():
@@ -115,17 +128,17 @@ def get_latest_results():
     Returns a list of dicts."""
     _init_db()
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    rows = conn.execute("""
-        SELECT b.* FROM benchmarks b
-        INNER JOIN (
-            SELECT grid_file, algo, MAX(timestamp) as max_ts
-            FROM benchmarks
-            GROUP BY grid_file, algo
-        ) latest ON b.grid_file = latest.grid_file
-                  AND b.algo = latest.algo
-                  AND b.timestamp = latest.max_ts
-        ORDER BY b.grid_file, b.algo
-    """).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("""
+            SELECT b.* FROM benchmarks b
+            INNER JOIN (
+                SELECT grid_file, algo, MAX(id) as max_id
+                FROM benchmarks
+                GROUP BY grid_file, algo
+            ) latest ON b.id = latest.max_id
+            ORDER BY b.grid_file, b.algo
+        """).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
