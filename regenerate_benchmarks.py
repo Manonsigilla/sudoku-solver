@@ -8,6 +8,7 @@ Usage:
 
 import os
 import sys
+import time
 
 from script import SudokuGrid
 from benchmark import run_benchmark, DB_PATH
@@ -41,6 +42,8 @@ def main():
         print("(skipping brute force)")
     print()
 
+    total_start = time.perf_counter()
+
     for grid_file in grid_files:
         filepath = os.path.join(GRIDS_DIR, grid_file)
         print(f"--- {grid_file} ---")
@@ -49,6 +52,8 @@ def main():
             if skip_brute and algo_name == "brute":
                 print(f"  {algo_name:20s} [SKIPPED]")
                 continue
+
+            print(f"  {algo_name:20s} running...", flush=True)
 
             # Reload a fresh grid for each algorithm
             sg = SudokuGrid(filepath)
@@ -64,7 +69,8 @@ def main():
 
         print()
 
-    print("Done. Results saved to", DB_PATH)
+    elapsed = time.perf_counter() - total_start
+    print(f"Done in {elapsed:.2f}s. Results saved to {DB_PATH}")
 
 
 if __name__ == "__main__":
