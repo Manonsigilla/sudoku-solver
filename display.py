@@ -1,8 +1,8 @@
+import time
 import pygame
 import sys
 import random
 import math
-import json
 import os
 from game_manager import get_or_generate_puzzle, build_candidates, validate_move
 
@@ -249,9 +249,10 @@ def solver_menu_pygame():
     # SOLVE button at the bottom
     solve_y = algo_y_start + ((len(algo_names) + 1) // 2) * (algo_btn_h + grid_spacing) + 20
     solve_btn = Button(170, solve_y, 200, 50, "SOLVE")
+    results_btn = Button(170, solve_y + 60, 200, 50, "VIEW RESULTS")
     
     # Compute window height to fit everything
-    window_h = solve_y + 50 + 30
+    window_h = solve_y + 120
     screen = pygame.display.set_mode((540, window_h))
     
     selected_grid = None
@@ -259,7 +260,7 @@ def solver_menu_pygame():
     
     while True:
         mouse_pos = pygame.mouse.get_pos()
-        for btn in grid_buttons + algo_buttons + [solve_btn]:
+        for btn in grid_buttons + algo_buttons + [solve_btn, results_btn]:
             btn.update_hover(mouse_pos)
         
         for event in pygame.event.get():
@@ -279,7 +280,10 @@ def solver_menu_pygame():
                 # SOLVE button only works when both are selected
                 if solve_btn.is_clicked(event.pos) and selected_grid and selected_algo:
                     run_solver(f"grids/{selected_grid}", selected_algo)
-                    return
+                
+                # Results button
+                if results_btn.is_clicked(event.pos):
+                    show_results_menu()
         
         screen.fill(COLOR_WHITE)
         
@@ -317,6 +321,9 @@ def solver_menu_pygame():
             dim_text = font.render("SOLVE", True, (180, 180, 180))
             dim_rect = dim_text.get_rect(center=solve_btn.rect.center)
             screen.blit(dim_text, dim_rect)
+        
+        # Draw results button   
+        results_btn.draw(screen, font)
         
         pygame.display.flip()
 class _SolverAborted(Exception):
@@ -373,7 +380,7 @@ def run_solver(filepath, algo):
         )
         screen.blit(status, (10, WINDOW_SIZE - 30))
         pygame.display.flip()
-        clock.tick(120)
+        time.sleep(0.1) # Slow down for visibility; remove or adjust as needed
     
     algo_func = algo_map.get(algo, propagation_mrv)
     
@@ -388,28 +395,41 @@ def run_solver(filepath, algo):
     solve_duration = (end_time_perf - start_time_perf) / 1000.0
     
     # Save benchmark
-    grid_name = os.path.basename(filepath)
-    benchmark_key = f"{grid_name} | {algo}"
+    from benchmark import run_benchmark
     
-    best_time = solve_duration
-    benchmarks = {}
-    if os.path.exists("benchmarks.json"):
-        try:
-            with open("benchmarks.json", "r") as f:
-                benchmarks = json.load(f)
-                if benchmark_key in benchmarks:
-                    best_time = min(solve_duration, benchmarks[benchmark_key])
-                else:
-                    best_time = solve_duration
-        except:
-            pass
-            
-    benchmarks[benchmark_key] = best_time
+    grid_name = os.path.basename(filepath)
+    # run_benchmark(grid, original, algo_name, solve_func, grid_file)
+    # Mais on fait un simple enregistrement sans callback de count
+    
     try:
-        with open("benchmarks.json", "w") as f:
-            json.dump(benchmarks, f, indent=4)
-    except:
-        pass
+        # Enregistrement SQLite simple
+        import sqlite3
+        db_path = "results.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS benchmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT DEFAULT (datetime('now')),
+                grid_file TEXT NOT NULL,
+                algo TEXT NOT NULL,
+                time_ms REAL NOT NULL,
+                iterations INTEGER NOT NULL,
+                cells_empty INTEGER NOT NULL,
+                solved INTEGER NOT NULL
+            )
+        """)
+        
+        # Compter les cellules vides
+        cells_empty = sum(1 for r in sudoku.original for c in r if c == 0)
+        
+        conn.execute(
+            "INSERT INTO benchmarks (grid_file, algo, time_ms, iterations, cells_empty, solved) VALUES (?, ?, ?, ?, ?, ?)",
+            (grid_name, algo, solve_duration * 1000, step_count[0], cells_empty, int(success))
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        pass  # Silently fail if SQL doesn't work
     
     # Show final result
     result_text = "SOLVED!" if success else "NO SOLUTION FOUND"
@@ -441,7 +461,7 @@ def run_solver(filepath, algo):
         
         # Display Best Time
         best_line = font_status.render(
-            f"Best Time: {best_time:.3f}s", True, (130, 30, 30)
+            f"Time: {solve_duration:.3f}s", True, (130, 30, 30)
         )
         screen.blit(best_line, (WINDOW_SIZE // 2 - best_line.get_width() // 2, 70))
         
@@ -450,6 +470,14 @@ def run_solver(filepath, algo):
         
         pygame.display.flip()
         clock.tick(60)
+        
+def show_results_menu():
+        """Show results from SQLite benchmarks in matplotlib window."""
+        try:
+            from results_window import show_results
+            show_results()
+        except ImportError:
+            pass
 
 def draw_solver_grid(screen, sudoku, font):
     for i in range(10):
