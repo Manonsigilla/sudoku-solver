@@ -353,7 +353,7 @@ def run_solver(filepath, algo):
     
     # Step counter for throttled rendering
     step_count = [0]
-    UPDATE_EVERY = 50  # Redraw every N solver steps
+    UPDATE_EVERY = 10  # Redraw every N solver steps
     
     def solver_callback(row, col, num, action):
         """Called by the solver on each place/remove step.
@@ -399,37 +399,34 @@ def run_solver(filepath, algo):
     
     grid_name = os.path.basename(filepath)
     # run_benchmark(grid, original, algo_name, solve_func, grid_file)
-    # Mais on fait un simple enregistrement sans callback de count
     
     try:
-        # Enregistrement SQLite simple
-        import sqlite3
-        db_path = "results.db"
-        conn = sqlite3.connect(db_path)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS benchmarks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT DEFAULT (datetime('now')),
-                grid_file TEXT NOT NULL,
-                algo TEXT NOT NULL,
-                time_ms REAL NOT NULL,
-                iterations INTEGER NOT NULL,
-                cells_empty INTEGER NOT NULL,
-                solved INTEGER NOT NULL
-            )
-        """)
+        # Map display names to algo_name for database
+        algo_key = {
+            "Brute Force": "brute",
+            "Backtracking": "backtrack",
+            "Backtracking MRV": "backtrack_mrv",
+            "Constraint Propagation": "propagation",
+            "Propagation MRV": "propagation_mrv",
+        }.get(algo, "unknown")
         
-        # Compter les cellules vides
+        # Count empty cells
         cells_empty = sum(1 for r in sudoku.original for c in r if c == 0)
         
+        # Save directly to benchmark
+        import sqlite3
+        from benchmark import DB_PATH, _init_db
+        _init_db()
+        conn = sqlite3.connect(DB_PATH)
         conn.execute(
             "INSERT INTO benchmarks (grid_file, algo, time_ms, iterations, cells_empty, solved) VALUES (?, ?, ?, ?, ?, ?)",
-            (grid_name, algo, solve_duration * 1000, step_count[0], cells_empty, int(success))
+            (grid_name, algo_key, solve_duration * 1000, step_count[0], cells_empty, int(success))
         )
         conn.commit()
         conn.close()
+        print(f"[BENCHMARK] Saved: {grid_name} | {algo} | {solve_duration*1000:.1f}ms | {step_count[0]} iterations")
     except Exception as e:
-        pass  # Silently fail if SQL doesn't work
+        print(f"[ERROR] Benchmark save failed: {e}")
     
     # Show final result
     result_text = "SOLVED!" if success else "NO SOLUTION FOUND"

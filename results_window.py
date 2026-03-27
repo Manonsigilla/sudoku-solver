@@ -9,6 +9,7 @@
 # =============================================================================
 
 import os
+import sys
 import subprocess
 import tempfile
 import matplotlib.pyplot as plt
@@ -209,8 +210,11 @@ def show_results():
     plt.close(fig)
     print("[OK] Results chart saved to {}".format(tmp_path))
 
-    # Open with the system default image viewer
+    # Open with the system default image viewer (cross-platform)
     try:
-        subprocess.Popen(["xdg-open", tmp_path])
-    except FileNotFoundError:
-        print("[WARN] xdg-open not found. Open manually: " + tmp_path)
+        if sys.platform == "win32":
+            os.startfile(tmp_path)  # Windows
+        else:
+            subprocess.Popen(["xdg-open", tmp_path])  # Linux/Mac
+    except (FileNotFoundError, AttributeError):
+        print("[WARN] Could not open image viewer. Open manually: " + tmp_path)
