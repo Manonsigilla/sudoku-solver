@@ -1,9 +1,4 @@
-# [ORIGINAL] from solver import brute_force, backtracking
-# [ORIGINAL] from algorithms import (backtracking_mrv, constraint_propagation,
-#                                     propagation_mrv, brute_force_with_callback,
-#                                     backtracking_with_callback)
-
-# [MODIFIED] All algorithms consolidated into solver.py
+# All algorithms consolidated into solver.py
 from solver import (brute_force_with_callback, backtracking_with_callback,
                     backtracking_mrv, constraint_propagation, propagation_mrv)
 
