@@ -84,11 +84,12 @@ def save_score(difficulty, time_seconds, completed_cells, timestamp=None):
         print(f"[ERROR] Could not save score: {e}")
 
 
-def save_game(game_state):
+def save_game(game_state, elapsed_time=0):
     """Save current game state for pause/resume functionality.
     
     Args:
         game_state (GameState): The current game state object
+        elapsed_time (float): Time elapsed so far (in seconds)
     """
     init_saves_dir()
     
@@ -97,16 +98,18 @@ def save_game(game_state):
         "difficulty": game_state.difficulty,
         "current_grid": game_state.current_grid,
         "original_grid": game_state.original_grid,
+        "solved_grid": game_state.solved_grid,
         "stash": {str(k): list(v) for k, v in game_state.stash.items()},
         "cell_status": {str(k): v for k, v in game_state.cell_status.items()},
         "selected_cell": game_state.selected_cell,
+        "elapsed_time": elapsed_time,
         "timestamp": datetime.now().isoformat(),
     }
     
     try:
         with open(CURRENT_SAVE_FILE, "w", encoding="utf-8") as f:
             json.dump(save_data, f, indent=2, ensure_ascii=False)
-        print(f"[OK] Game saved")
+        print(f"[OK] Game saved (time: {elapsed_time:.1f}s)")
     except IOError as e:
         print(f"[ERROR] Could not save game: {e}")
 
