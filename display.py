@@ -328,10 +328,11 @@ def difficulty_menu():
     # Boutons avec positions fixes (pas de changement de fenêtre)
     resume_btn = None
     if has_save():
-        resume_btn = Button((WINDOW_WIDTH - 200) // 2, 50, 200, 45, "RESUME GAME", "success")
-        y_start = 120
+        # ✅ Move down (from 50 to 110)
+        resume_btn = Button((WINDOW_WIDTH - 200) // 2, 110, 200, 45, "RESUME GAME", "success")
+        y_start = 180
     else:
-        y_start = 80
+        y_start = 140
     
     easy_btn = Button((WINDOW_WIDTH - 200) // 2, y_start, 200, 50, "EASY", "success")
     normal_btn = Button((WINDOW_WIDTH - 200) // 2, y_start + 70, 200, 50, "NORMAL", "primary")
@@ -384,7 +385,8 @@ def difficulty_menu():
         draw_decorative_circles(screen, WINDOW_WIDTH, WINDOW_HEIGHT)
         
         title = font_large.render("SELECT DIFFICULTY", True, COLOR_VIBRANT_YELLOW)
-        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 30))
+        # ✅ Move title slightly down (from 30 to 50)
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 50))
         screen.blit(title, title_rect)
         
         if resume_btn:
@@ -416,11 +418,11 @@ def solver_menu_pygame():
     
     # GRID BUTTONS
     grid_list_y = 80
-    grid_list_h = 200
+    grid_list_h = 280  # ✅ Expanded to fit 5 grids without scrolling
     grid_btn_h = 40
     grid_btn_w = 620
     grid_btn_x = 40
-    scroll_offset = 0
+    # ✅ Scroll offset removed to fix mouse targeting bug
     
     grid_buttons = []
     for i, f in enumerate(grid_files):
@@ -429,7 +431,8 @@ def solver_menu_pygame():
         grid_buttons.append(btn)
     
     # ALGORITHM BUTTONS
-    algo_list_y = grid_list_y + grid_list_h + 50
+    # ✅ Shift algorithms down to accommodate larger grid area (280 instead of 200)
+    algo_list_y = grid_list_y + grid_list_h + 40
     algo_names = [
         "Brute Force",
         "Backtracking",
@@ -462,13 +465,8 @@ def solver_menu_pygame():
             btn.update_hover(mouse_pos)
         
         for btn in grid_buttons:
-            btn_screen_y = btn.rect.y - scroll_offset
-            visible = grid_list_y <= btn_screen_y < grid_list_y + grid_list_h
-            if visible:
-                temp_rect = pygame.Rect(btn.rect.x, btn_screen_y, btn.rect.width, btn.rect.height)
-                btn.hovered = temp_rect.collidepoint(mouse_pos)
-            else:
-                btn.hovered = False
+            # ✅ Hover detection now uses fixed y (no scroll_offset bug)
+            btn.hovered = btn.rect.collidepoint(mouse_pos)
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -477,19 +475,10 @@ def solver_menu_pygame():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 4:
-                    scroll_offset = max(0, scroll_offset - 40)
-                elif event.button == 5:
-                    max_scroll = max(0, len(grid_buttons) * (grid_btn_h + 8) - grid_list_h)
-                    scroll_offset = min(max_scroll, scroll_offset + 40)
-                
+                # ✅ Mouse wheel handling removed (no longer needed)
                 for btn in grid_buttons:
-                    btn_screen_y = btn.rect.y - scroll_offset
-                    visible = grid_list_y <= btn_screen_y < grid_list_y + grid_list_h
-                    if visible:
-                        temp_rect = pygame.Rect(btn.rect.x, btn_screen_y, btn.rect.width, btn.rect.height)
-                        if temp_rect.collidepoint(event.pos):
-                            selected_grid = btn.text
+                    if btn.is_clicked(event.pos):
+                        selected_grid = btn.text
                 
                 for btn in algo_buttons:
                     if btn.is_clicked(event.pos):
@@ -518,29 +507,11 @@ def solver_menu_pygame():
         pygame.draw.rect(screen, COLOR_BG_SECONDARY, panel_rect, border_radius=8)
         pygame.draw.rect(screen, COLOR_VIBRANT_BLUE, panel_rect, 2, border_radius=8)
         
-        clip_rect = pygame.Rect(grid_btn_x, grid_list_y, grid_btn_w, grid_list_h)
-        screen.set_clip(clip_rect)
-        
-        for i, btn in enumerate(grid_buttons):
-            btn.rect.y = grid_list_y + i * (grid_btn_h + 8) - scroll_offset
-            if grid_list_y <= btn.rect.y < grid_list_y + grid_list_h:
-                btn.draw(screen, font)
-                if btn.text == selected_grid:
-                    pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, btn.rect, 4, border_radius=12)
-        
-        screen.set_clip(None)
-        
-        if len(grid_buttons) * (grid_btn_h + 8) > grid_list_h:
-            total_scroll_height = len(grid_buttons) * (grid_btn_h + 8)
-            scrollbar_h = (grid_list_h / total_scroll_height) * grid_list_h
-            scrollbar_y = (scroll_offset / total_scroll_height) * grid_list_h
-            scrollbar_rect = pygame.Rect(
-                grid_btn_x + grid_btn_w + 5,
-                grid_list_y + scrollbar_y,
-                8,
-                scrollbar_h
-            )
-            pygame.draw.rect(screen, COLOR_VIBRANT_BLUE, scrollbar_rect, border_radius=4)
+        # ✅ Draw all buttons directly (all fit in 280px)
+        for btn in grid_buttons:
+            btn.draw(screen, font)
+            if btn.text == selected_grid:
+                pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, btn.rect, 4, border_radius=12)
         
         section2 = font_section.render("Select an algorithm:", True, COLOR_VIBRANT_YELLOW)
         screen.blit(section2, (40, algo_list_y - 35))
@@ -855,8 +826,10 @@ def play_game(difficulty: str, screen, resume_save=None):
                     game_state.select_cell(row, col)
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 x, y = event.pos
-                if 120 <= y < 120 + WINDOW_SIZE and 0 <= x < WINDOW_SIZE:
-                    col, row = x // CELL_SIZE, (y - 120) // CELL_SIZE
+                # ✅ Fix: Account for centered grid x_offset (80)
+                grid_x_offset = (WINDOW_WIDTH - WINDOW_SIZE) // 2
+                if 120 <= y < 120 + WINDOW_SIZE and grid_x_offset <= x < grid_x_offset + WINDOW_SIZE:
+                    col, row = (x - grid_x_offset) // CELL_SIZE, (y - 120) // CELL_SIZE
                     game_state.select_cell(row, col)
         
         if game_state.is_complete():
@@ -882,16 +855,20 @@ def play_game(difficulty: str, screen, resume_save=None):
         
         # Draw everything
         draw_gradient_background(screen, WINDOW_WIDTH, WINDOW_HEIGHT, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        # ✅ Instructions panel now spans full width
         draw_game_instructions_panel(screen, font_small, difficulty)
-        draw_game_grid_offset(screen, game_state, font_large, font_small, 120)
         
-        # ✅ Display current time
+        # ✅ Center the grid: x_offset = (700 - 540) // 2 = 80
+        grid_x_offset = (WINDOW_WIDTH - WINDOW_SIZE) // 2
+        draw_game_grid_centered(screen, game_state, font_large, font_small, 120, grid_x_offset)
+        
+        # ✅ Move timer to top-right of the controls panel (well within 700px)
         elapsed = time.time() - start_time
-        time_text = pygame.font.SysFont("arial", 14).render(
+        time_text = pygame.font.SysFont("arial", 16, bold=True).render(
             f"Time: {int(elapsed // 60):02d}:{int(elapsed % 60):02d}", 
             True, COLOR_VIBRANT_CYAN
         )
-        screen.blit(time_text, (WINDOW_WIDTH - 150, 10))
+        screen.blit(time_text, (WINDOW_WIDTH - 120, 20))
         
         pygame.display.flip()
         clock.tick(60)
@@ -942,16 +919,19 @@ def draw_game_grid(screen, game_state, font_large, font_small):
             if game_state.selected_cell == cell_coord:
                 pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, (x, y, CELL_SIZE, CELL_SIZE), 3)
 
-def draw_game_grid_offset(screen, game_state, font_large, font_small, y_offset):
-    """Draw the game grid with offset from top (for instructions panel)."""
+def draw_game_grid_centered(screen, game_state, font_large, font_small, y_offset, x_offset):
+    """Draw the game grid with offset from top and center it horizontally."""
     for i in range(10):
         thickness = 3 if i % 3 == 0 else 1
-        pygame.draw.line(screen, COLOR_BLACK, (i * CELL_SIZE, y_offset), (i * CELL_SIZE, y_offset + WINDOW_SIZE), thickness)
-        pygame.draw.line(screen, COLOR_BLACK, (0, y_offset + i * CELL_SIZE), (WINDOW_SIZE, y_offset + i * CELL_SIZE), thickness)
+        # Drawing grid lines
+        pygame.draw.line(screen, COLOR_BLACK, (x_offset + i * CELL_SIZE, y_offset), 
+                         (x_offset + i * CELL_SIZE, y_offset + WINDOW_SIZE), thickness)
+        pygame.draw.line(screen, COLOR_BLACK, (x_offset, y_offset + i * CELL_SIZE), 
+                         (x_offset + WINDOW_SIZE, y_offset + i * CELL_SIZE), thickness)
     
     for row in range(9):
         for col in range(9):
-            x, y = col * CELL_SIZE, y_offset + row * CELL_SIZE
+            x, y = x_offset + col * CELL_SIZE, y_offset + row * CELL_SIZE
             cell_coord = (row, col)
             
             if game_state.original_grid[row][col] != 0:
@@ -988,9 +968,9 @@ def draw_game_grid_offset(screen, game_state, font_large, font_small, y_offset):
                 pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, (x, y, CELL_SIZE, CELL_SIZE), 3)
                 
 def draw_game_instructions_panel(screen, font_small, difficulty):
-    """Draw instructions panel at the top of the game screen."""
+    """Draw instructions panel at the top of the game screen spanning FULL width."""
     panel_height = 120
-    panel_rect = pygame.Rect(0, 0, WINDOW_SIZE, panel_height)
+    panel_rect = pygame.Rect(0, 0, WINDOW_WIDTH, panel_height)
     
     # Background du panel
     pygame.draw.rect(screen, COLOR_BG_SECONDARY, panel_rect)
@@ -1025,7 +1005,7 @@ def draw_game_instructions_panel(screen, font_small, difficulty):
     
     for i, text in enumerate(instructions_col2):
         surf = font_instructions.render(text, True, COLOR_TEXT_LIGHT)
-        screen.blit(surf, (WINDOW_SIZE // 2 + 15, y_start + i * 25))
+        screen.blit(surf, (WINDOW_WIDTH // 2 + 15, y_start + i * 25))
         
 def show_pause_menu(screen, font):
     """Display pause menu with options to resume, save, or exit.
@@ -1061,25 +1041,40 @@ def show_pause_menu(screen, font):
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return "resume"
         
-        # Draw semi-transparent overlay
-        overlay = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE + 120))
-        overlay.set_alpha(200)
-        overlay.fill((0, 0, 0))
+        # ✅ Fix: Use WINDOW_WIDTH and WINDOW_HEIGHT to cover the sidebar
+        # Draw semi-transparent overlay over the WHOLE window
+        overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT))
+        overlay.set_alpha(180)
+        overlay.fill((10, 10, 25))
         screen.blit(overlay, (0, 0))
         
-        # Draw pause menu
-        draw_gradient_background(screen, WINDOW_SIZE, WINDOW_SIZE + 120, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        # ✅ Center pause menu elements on WINDOW_WIDTH
+        panel_w, panel_h = 300, 350
+        panel_x = (WINDOW_WIDTH - panel_w) // 2
+        panel_y = (WINDOW_HEIGHT - panel_h) // 2
+        
+        # Draw pause menu panel
+        pygame.draw.rect(screen, COLOR_BG_SECONDARY, (panel_x, panel_y, panel_w, panel_h), border_radius=15)
+        pygame.draw.rect(screen, COLOR_VIBRANT_BLUE, (panel_x, panel_y, panel_w, panel_h), 3, border_radius=15)
         
         title = font_title.render("PAUSED", True, COLOR_VIBRANT_YELLOW)
-        title_rect = title.get_rect(center=(WINDOW_SIZE // 2, 50))
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, panel_y + 50))
         screen.blit(title, title_rect)
+        
+        # Reposition buttons to be centered in panel
+        resume_btn.rect.centerx = WINDOW_WIDTH // 2
+        resume_btn.rect.y = panel_y + 110
+        save_btn.rect.centerx = WINDOW_WIDTH // 2
+        save_btn.rect.y = panel_y + 180
+        menu_btn.rect.centerx = WINDOW_WIDTH // 2
+        menu_btn.rect.y = panel_y + 250
         
         resume_btn.draw(screen, font_button)
         save_btn.draw(screen, font_button)
         menu_btn.draw(screen, font_button)
         
         hint = font.render("ESC to resume", True, (150, 150, 150))
-        screen.blit(hint, (WINDOW_SIZE // 2 - hint.get_width() // 2, 380))
+        screen.blit(hint, (WINDOW_WIDTH // 2 - hint.get_width() // 2, panel_y + 320))
         
         pygame.display.flip()
         
