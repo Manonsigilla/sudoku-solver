@@ -16,130 +16,6 @@ import time
 
 
 # =============================================================================
-# [ORIGINAL] Original solver.py code (commented, not deleted)
-# =============================================================================
-# def find_empty(grid):
-#     """Find the first empty cell (value 0) in the grid.
-#     Returns a tuple (row, col) or None if no empty cell."""
-#     for row in range(9):
-#         for col in range(9):
-#             if grid[row][col] == 0:
-#                 return (row, col)
-#     return None
-#
-#
-# def get_all_empty(grid):
-#     """Return a list of all empty cell positions."""
-#     empty_cells = []
-#     for row in range(9):
-#         for col in range(9):
-#             if grid[row][col] == 0:
-#                 empty_cells.append((row, col))
-#     return empty_cells
-#
-#
-# def is_grid_valid(grid):
-#     """Check if a fully completed grid is a valid sudoku solution.
-#     Verifies all 9 rows, 9 columns, and 9 blocks for duplicates."""
-#
-#     # Check each row
-#     for row in range(9):
-#         seen = []
-#         for col in range(9):
-#             num = grid[row][col]
-#             if num == 0 or num in seen:
-#                 return False
-#             seen.append(num)
-#
-#     # Check each column
-#     for col in range(9):
-#         seen = []
-#         for row in range(9):
-#             num = grid[row][col]
-#             if num in seen:
-#                 return False
-#             seen.append(num)
-#
-#     # Check each 3x3 block
-#     for block_row in range(3):
-#         for block_col in range(3):
-#             seen = []
-#             for row in range(block_row * 3, block_row * 3 + 3):
-#                 for col in range(block_col * 3, block_col * 3 + 3):
-#                     num = grid[row][col]
-#                     if num in seen:
-#                         return False
-#                     seen.append(num)
-#
-#     return True
-#
-#
-# def brute_force(grid, is_valid_func):
-#     """Solve by brute force: fill all empty cells, validate only when complete.
-#     Places numbers without checking validity at each step.
-#     Validation happens only when the entire grid is filled."""
-#
-#     empty_cells = get_all_empty(grid)
-#
-#     def try_fill(index):
-#         # All cells filled -- now validate the complete grid
-#         if index == len(empty_cells):
-#             return is_grid_valid(grid)
-#
-#         row, col = empty_cells[index]
-#
-#         # Try each number 1 to 9 without checking validity
-#         for num in range(1, 10):
-#             grid[row][col] = num
-#             if try_fill(index + 1):
-#                 return True
-#
-#         # No number worked, reset and go back
-#         grid[row][col] = 0
-#         return False
-#
-#     return try_fill(0)
-#
-#
-# def backtracking(grid, is_valid_func):
-#     """Solve by backtracking: check validity before placing each number.
-#     Prunes invalid branches early, much faster than brute force."""
-#
-#     # Find the next empty cell
-#     empty = find_empty(grid)
-#
-#     # No empty cell means the grid is solved
-#     if empty is None:
-#         return True
-#
-#     row, col = empty
-#
-#     # Try each number 1 to 9
-#     for num in range(1, 10):
-#         # Check validity BEFORE placing the number
-#         if is_valid_func(row, col, num):
-#             grid[row][col] = num
-#
-#             # Continue solving the rest of the grid
-#             if backtracking(grid, is_valid_func):
-#                 return True
-#
-#             # This number did not lead to a solution, undo and try next
-#             grid[row][col] = 0
-#
-#     # No number works for this cell, backtrack
-#     return False
-# =============================================================================
-# [END ORIGINAL]
-# =============================================================================
-
-
-# =============================================================================
-# [ADDED] Consolidated algorithms (moved from algorithms.py)
-# =============================================================================
-
-
-# =============================================================================
 # Public helpers
 # =============================================================================
 
@@ -168,30 +44,30 @@ def is_grid_valid(grid):
     Verifies all 9 rows, 9 columns, and 9 blocks for duplicates."""
     # Check each row
     for row in range(9):
-        seen = []
+        seen = set()
         for col in range(9):
             num = grid[row][col]
             if num == 0 or num in seen:
                 return False
-            seen.append(num)
+            seen.add(num)
     # Check each column
     for col in range(9):
-        seen = []
+        seen = set()
         for row in range(9):
             num = grid[row][col]
-            if num in seen:
+            if num == 0 or num in seen:
                 return False
-            seen.append(num)
+            seen.add(num)
     # Check each 3x3 block
     for block_row in range(3):
         for block_col in range(3):
-            seen = []
+            seen = set()
             for row in range(block_row * 3, block_row * 3 + 3):
                 for col in range(block_col * 3, block_col * 3 + 3):
                     num = grid[row][col]
-                    if num in seen:
+                    if num == 0 or num in seen:
                         return False
-                    seen.append(num)
+                    seen.add(num)
     return True
 
 
@@ -229,8 +105,19 @@ for _r in range(9):
     for _c in range(9):
         PEERS[(_r, _c)] = _get_peers(_r, _c)
 
+# Pre-compute the 27 units (9 rows + 9 columns + 9 blocks)
+UNITS = []
+for _r in range(9):
+    UNITS.append([(_r, _c) for _c in range(9)])
+for _c in range(9):
+    UNITS.append([(_r, _c) for _r in range(9)])
+for _br in range(3):
+    for _bc in range(3):
+        UNITS.append([(_r, _c) for _r in range(_br * 3, _br * 3 + 3)
+                                for _c in range(_bc * 3, _bc * 3 + 3)])
 
-def _build_candidates(grid):
+
+def build_candidates(grid):
     """Build the candidate dictionary for each empty cell.
     For each empty cell (r, c), compute the set of digits 1-9 that are
     not already present in the same row, column, or block.
@@ -311,23 +198,7 @@ def _propagate(candidates, grid, callback=None):
         # --- Rule 2: Hidden Singles ---
         # For each unit (row, column, block), check if a digit
         # can only go in one place
-        units = []
-        # Rows: the 9 cells of each row
-        for r in range(9):
-            units.append([(r, c) for c in range(9)])
-        # Columns: the 9 cells of each column
-        for c in range(9):
-            units.append([(r, c) for r in range(9)])
-        # 3x3 blocks
-        for br in range(3):
-            for bc in range(3):
-                block = []
-                for r in range(br * 3, br * 3 + 3):
-                    for c in range(bc * 3, bc * 3 + 3):
-                        block.append((r, c))
-                units.append(block)
-
-        for unit in units:
+        for unit in UNITS:
             # For each digit 1-9, count how many cells in this unit
             # have it as a candidate
             for num in range(1, 10):
@@ -497,8 +368,8 @@ def backtracking_mrv(grid, is_valid_func, callback=None):
         if len(cands) == 0:
             return False
 
-        # Try each candidate
-        for num in cands:
+        # Try each candidate (iterate over a copy: cands is mutated during backtrack)
+        for num in list(cands):
             grid[row][col] = num
             if callback:
                 callback(row, col, num, "place")
@@ -551,7 +422,7 @@ def constraint_propagation(grid, is_valid_func, callback=None):
 
     Returns True if the grid is fully solved, False otherwise."""
     # Build initial candidates
-    candidates = _build_candidates(grid)
+    candidates = build_candidates(grid)
 
     # Propagate constraints
     no_contradiction = _propagate(candidates, grid, callback)
@@ -582,7 +453,7 @@ def propagation_mrv(grid, is_valid_func, callback=None):
 
     Returns True if a solution is found, False otherwise."""
     # Build initial candidates
-    candidates = _build_candidates(grid)
+    candidates = build_candidates(grid)
 
     def solve(candidates, grid):
         """Recursive function: propagate then search if needed."""
@@ -626,7 +497,7 @@ def propagation_mrv(grid, is_valid_func, callback=None):
                 for c in range(9):
                     grid[r][c] = grid_copy[r][c]
             candidates.clear()
-            candidates.update(copy.deepcopy(candidates_copy))
+            candidates.update(candidates_copy)
             if callback:
                 callback(row, col, 0, "remove")
 

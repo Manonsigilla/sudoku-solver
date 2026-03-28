@@ -9,21 +9,16 @@
 # =============================================================================
 
 import os
+import sys
 import subprocess
 import tempfile
 import matplotlib.pyplot as plt
 import numpy as np
 from benchmark import get_latest_results
+from display import ALGO_PALETTE
 
-
-# Colors for each algorithm (consistent with the pygame display)
-ALGO_COLORS = {
-    "brute": "#e74c3c",           # Red
-    "backtrack": "#3498db",       # Blue
-    "backtrack_mrv": "#2ecc71",   # Green
-    "propagation": "#9b59b6",     # Purple
-    "propagation_mrv": "#f39c12", # Orange
-}
+# Derive hex colors from the centralized palette
+ALGO_COLORS = {k: v["hex"] for k, v in ALGO_PALETTE.items()}
 
 # Readable names for legends
 ALGO_LABELS = {
@@ -38,10 +33,17 @@ ALGO_LABELS = {
 ALGO_ORDER = ["brute", "backtrack", "backtrack_mrv", "propagation", "propagation_mrv"]
 
 
-def _plot_time_bars(ax, results):
-    """Grouped bars: execution time (ms) per algorithm, grouped by grid.
-    Each group of bars represents a grid, each bar an algorithm."""
-    # Organize data by grid and by algorithm
+def _plot_bars(ax, results, field, ylabel, title):
+    """Grouped bars: one numeric field per algorithm, grouped by grid.
+    Each group of bars represents a grid, each bar an algorithm.
+
+    Parameters:
+        ax      -- matplotlib Axes to draw on
+        results -- list of result dicts from get_latest_results()
+        field   -- key to extract from each result dict (e.g. "time_ms", "iterations")
+        ylabel  -- label for the Y axis
+        title   -- chart title
+    """
     grids = sorted(set(r["grid_file"] for r in results))
     algos = [a for a in ALGO_ORDER if any(r["algo"] == a for r in results)]
 
@@ -55,56 +57,25 @@ def _plot_time_bars(ax, results):
     width = 0.8 / len(algos)  # Width of each bar
 
     for i, algo in enumerate(algos):
-        times = []
+        values = []
         for grid in grids:
             # Find the result for this (grid, algo) pair
             matching = [r for r in results
                         if r["grid_file"] == grid and r["algo"] == algo]
-            times.append(matching[0]["time_ms"] if matching else 0)
+            val = matching[0][field] if matching else 0
+            values.append(val if val > 0 else np.nan)
         # Draw bars for this algorithm
         offset = (i - len(algos) / 2 + 0.5) * width
-        ax.bar(x + offset, times, width, label=ALGO_LABELS.get(algo, algo),
+        ax.bar(x + offset, values, width, label=ALGO_LABELS.get(algo, algo),
                color=ALGO_COLORS.get(algo, "#999"))
 
     ax.set_xlabel("Grid")
-    ax.set_ylabel("Time (ms)")
-    ax.set_title("Execution time per algorithm")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
     ax.set_xticks(x)
     ax.set_xticklabels([g.replace(".txt", "") for g in grids], rotation=45, ha="right")
     ax.legend(fontsize=8)
     ax.set_yscale("log")  # Log scale because the gaps are huge
-
-
-def _plot_iteration_bars(ax, results):
-    """Grouped bars: number of iterations per algorithm, grouped by grid."""
-    grids = sorted(set(r["grid_file"] for r in results))
-    algos = [a for a in ALGO_ORDER if any(r["algo"] == a for r in results)]
-
-    if not grids or not algos:
-        ax.text(0.5, 0.5, "No data", ha="center", va="center",
-                transform=ax.transAxes, fontsize=12)
-        return
-
-    x = np.arange(len(grids))
-    width = 0.8 / len(algos)
-
-    for i, algo in enumerate(algos):
-        iterations = []
-        for grid in grids:
-            matching = [r for r in results
-                        if r["grid_file"] == grid and r["algo"] == algo]
-            iterations.append(matching[0]["iterations"] if matching else 0)
-        offset = (i - len(algos) / 2 + 0.5) * width
-        ax.bar(x + offset, iterations, width, label=ALGO_LABELS.get(algo, algo),
-               color=ALGO_COLORS.get(algo, "#999"))
-
-    ax.set_xlabel("Grid")
-    ax.set_ylabel("Iterations")
-    ax.set_title("Number of iterations per algorithm")
-    ax.set_xticks(x)
-    ax.set_xticklabels([g.replace(".txt", "") for g in grids], rotation=45, ha="right")
-    ax.legend(fontsize=8)
-    ax.set_yscale("log")  # Log scale
 
 
 def _plot_time_vs_difficulty(ax, results):
@@ -125,7 +96,7 @@ def _plot_time_vs_difficulty(ax, results):
         # Sort by number of empty cells (difficulty)
         algo_results.sort(key=lambda r: r["cells_empty"])
         x_vals = [r["cells_empty"] for r in algo_results]
-        y_vals = [r["time_ms"] for r in algo_results]
+        y_vals = [r["time_ms"] if r["time_ms"] > 0 else np.nan for r in algo_results]
         ax.plot(x_vals, y_vals, marker="o", linewidth=2, markersize=5,
                 label=ALGO_LABELS.get(algo, algo),
                 color=ALGO_COLORS.get(algo, "#999"))
@@ -162,12 +133,23 @@ def _plot_formulas(ax):
          r"Propagation + MRV backtracking if stalled"),
     ]
 
+    # Map readable formula names to palette keys
+    FORMULA_ALGO_KEYS = {
+        "Brute Force": "brute",
+        "Backtracking": "backtrack",
+        "Backtracking + MRV": "backtrack_mrv",
+        "AC-3 Propagation": "propagation",
+        "AC-3 + MRV": "propagation_mrv",
+    }
+
     # Position formulas vertically
     y = 0.92
     for name, complexity, detail in formulas:
+        algo_key = FORMULA_ALGO_KEYS.get(name)
+        color = ALGO_COLORS.get(algo_key, "#333")
         ax.text(0.02, y, name, fontsize=11, fontweight="bold",
                 transform=ax.transAxes, verticalalignment="top",
-                color=ALGO_COLORS.get(name.lower().replace(" ", "_").replace("+", "").replace("ac-3", "propagation").strip(), "#333"))
+                color=color)
         ax.text(0.02, y - 0.05, complexity, fontsize=10,
                 transform=ax.transAxes, verticalalignment="top")
         ax.text(0.02, y - 0.10, detail, fontsize=9, color="#666",
@@ -192,9 +174,9 @@ def show_results():
     fig.suptitle("Sudoku Solver -- Comparative Results", fontsize=16, fontweight="bold")
 
     # Top-left: time bars
-    _plot_time_bars(axes[0, 0], results)
+    _plot_bars(axes[0, 0], results, "time_ms", "Time (ms)", "Execution time per algorithm")
     # Top-right: iteration bars
-    _plot_iteration_bars(axes[0, 1], results)
+    _plot_bars(axes[0, 1], results, "iterations", "Iterations", "Number of iterations per algorithm")
     # Bottom-left: evolution curves
     _plot_time_vs_difficulty(axes[1, 0], results)
     # Bottom-right: LaTeX formulas
@@ -202,17 +184,20 @@ def show_results():
 
     plt.tight_layout()
 
-    # [MODIFIED] Save chart to temp file and open with system viewer.
-    # This avoids conflicts with Pygame's display ownership (plt.show()
-    # fails when called from inside a Pygame event loop).
-    # [ORIGINAL] plt.show()
+    # Save chart to temp file and open with system viewer
+    # (plt.show() conflicts with Pygame's display ownership)
     tmp_path = os.path.join(tempfile.gettempdir(), "sudoku_results.png")
     fig.savefig(tmp_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("[OK] Results chart saved to {}".format(tmp_path))
 
-    # Open with the system default image viewer
+    # Open with the system default image viewer (cross-platform)
     try:
-        subprocess.Popen(["xdg-open", tmp_path])
-    except FileNotFoundError:
-        print("[WARN] xdg-open not found. Open manually: " + tmp_path)
+        if sys.platform == "win32":
+            os.startfile(tmp_path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", tmp_path])
+        else:
+            subprocess.Popen(["xdg-open", tmp_path])
+    except (FileNotFoundError, OSError, AttributeError):
+        print("[WARN] Could not open image viewer. Open manually: " + tmp_path)

@@ -19,3 +19,6 @@ venv/
 
 # --- Superpowers brainstorming mockups ---
 .superpowers/
+
+# --- Benchmarks ---
+benchmarks.json
