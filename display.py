@@ -48,6 +48,14 @@ HARD_MODE_COLORS = [
     COLOR_VIBRANT_YELLOW, COLOR_VIBRANT_ORANGE, COLOR_VIBRANT_PURPLE,
     COLOR_VIBRANT_CYAN, COLOR_VIBRANT_PINK, (100, 200, 255),
 ]
+# Palette d'algorithmes pour les résultats
+ALGO_PALETTE = {
+    "brute": {"hex": "#FF6B6B", "rgb": COLOR_VIBRANT_RED},
+    "backtrack": {"hex": "#4ECDC4", "rgb": COLOR_VIBRANT_CYAN},
+    "backtrack_mrv": {"hex": "#45B7D1", "rgb": COLOR_VIBRANT_BLUE},
+    "propagation": {"hex": "#96CEB4", "rgb": COLOR_VIBRANT_GREEN},
+    "propagation_mrv": {"hex": "#FFEAA7", "rgb": COLOR_VIBRANT_YELLOW},
+}
 
 
 def draw_gradient_background(screen, width, height, color1, color2):
@@ -640,9 +648,13 @@ def show_results_menu():
     """Show results from SQLite benchmarks in matplotlib window."""
     try:
         from results_window import show_results
+        print("[DEBUG] Calling show_results()...")
         show_results()
-    except ImportError:
-        pass
+        print("[DEBUG] show_results() completed")
+    except ImportError as e:
+        print(f"[ERROR] Import failed: {e}")
+    except Exception as e:
+        print(f"[ERROR] Unexpected error: {e}")
 
 
 def draw_solver_grid(screen, sudoku, font):
