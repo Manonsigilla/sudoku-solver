@@ -2,8 +2,12 @@
 """Regenerate results.db by running all algorithms on all grids.
 
 Usage:
+    For python 3.8+:
     python3 regenerate_benchmarks.py
     python3 regenerate_benchmarks.py --skip-brute   # skip brute force (slow, 30s timeout)
+    For anaconda env:
+    python regenerate_benchmarks.py
+    python regenerate_benchmarks.py --skip-brute
 """
 
 import os
