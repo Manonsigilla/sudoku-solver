@@ -5,6 +5,7 @@ import random
 import math
 import os
 from game_manager import get_or_generate_puzzle, build_candidates, validate_move
+from save_manager import has_save, load_game, save_game, delete_save, save_score
 
 WINDOW_SIZE = 540
 CELL_SIZE = WINDOW_SIZE // 9
@@ -142,10 +143,23 @@ class Button:
 class GameState:
     """Manages game state including grid, moves, and difficulty level."""
     
-    def __init__(self, difficulty: str):
-        """Initialize game state."""
+    def __init__(self, difficulty: str, game_data=None):
+        """Initialize game state.
+        
+        Args:
+            difficulty (str): Game difficulty
+            game_data (dict): Optional saved game data to restore from
+        """
         self.difficulty = difficulty
-        self.puzzle_grid, self.solved_grid = get_or_generate_puzzle(difficulty)
+        
+        if game_data is None:
+            # New game
+            self.puzzle_grid, self.solved_grid = get_or_generate_puzzle(difficulty)
+        else:
+            # Load from save
+            self.puzzle_grid = [row[:] for row in game_data["current_grid"]]
+            self.solved_grid = get_or_generate_puzzle(difficulty)[1]
+        
         self.current_grid = [row[:] for row in self.puzzle_grid]
         self.original_grid = [row[:] for row in self.puzzle_grid]
         self.candidates = build_candidates(self.current_grid)
@@ -217,6 +231,38 @@ class GameState:
     def is_complete(self):
         """Check if the puzzle is completely solved."""
         return self.current_grid == self.solved_grid
+    
+    def restore_from_save(save_data):
+        """Restore a GameState from saved data.
+        
+        Args:
+            save_data (dict): Save data from save_manager.load_game()
+        
+        Returns:
+            GameState: Restored game state
+        """
+        game_state = GameState(save_data["difficulty"])
+        
+        # Restore grids
+        game_state.current_grid = [row[:] for row in save_data["current_grid"]]
+        game_state.original_grid = [row[:] for row in save_data["original_grid"]]
+        
+        # Restore stash (convert string keys back to tuples)
+        game_state.stash = {}
+        for key_str, values in save_data["stash"].items():
+            # Parse string key like "(0, 1)" back to tuple
+            row, col = eval(key_str)
+            game_state.stash[(row, col)] = set(values)
+        
+        # Restore cell status
+        game_state.cell_status = {}
+        for key_str, status in save_data["cell_status"].items():
+            row, col = eval(key_str)
+            game_state.cell_status[(row, col)] = status
+        
+        game_state.selected_cell = tuple(save_data["selected_cell"])
+        
+        return game_state
 
 
 def main_menu():
@@ -270,6 +316,8 @@ def main_menu():
 
 def difficulty_menu():
     """Display difficulty selection menu."""
+    from save_manager import has_save, load_game
+    
     screen = pygame.display.get_surface()
     pygame.display.set_mode((540, 300))
     pygame.display.set_caption("Sudoku - Difficulty")
@@ -279,6 +327,12 @@ def difficulty_menu():
     easy_btn = Button(170, 80, 200, 50, "EASY", "success")
     normal_btn = Button(170, 150, 200, 50, "NORMAL", "primary")
     hard_btn = Button(170, 220, 200, 50, "HARD", "secondary")
+    scores_btn = Button(170, 290, 200, 50, "SCORES", "primary")
+    
+    # Resume button if save exists
+    resume_btn = None
+    if has_save():
+        resume_btn = Button(170, 10, 200, 40, "RESUME GAME", "success")
     
     running = True
     while running:
@@ -286,6 +340,9 @@ def difficulty_menu():
         easy_btn.update_hover(mouse_pos)
         normal_btn.update_hover(mouse_pos)
         hard_btn.update_hover(mouse_pos)
+        scores_btn.update_hover(mouse_pos)
+        if resume_btn:
+            resume_btn.update_hover(mouse_pos)
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -294,6 +351,16 @@ def difficulty_menu():
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN:
+                # Resume game
+                if resume_btn and resume_btn.is_clicked(event.pos):
+                    save_data = load_game()
+                    if save_data:
+                        screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE + 120))
+                        result = play_game(save_data["difficulty"], screen, resume_save=save_data)
+                        pygame.display.set_mode((540, 400 if not has_save() else 360))
+                        if result != "return":
+                            return
+                
                 difficulty = None
                 if easy_btn.is_clicked(event.pos):
                     difficulty = "easy"
@@ -301,25 +368,32 @@ def difficulty_menu():
                     difficulty = "normal"
                 elif hard_btn.is_clicked(event.pos):
                     difficulty = "hard"
+                elif scores_btn.is_clicked(event.pos):
+                    scores_menu()
+                    continue
                 
                 if difficulty:
-                    screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE))
+                    screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE + 120))
                     result = play_game(difficulty, screen)
-                    pygame.display.set_mode((540, 300))
+                    pygame.display.set_mode((540, 400 if not has_save() else 360))
                     if result != "return":
                         return
         
         screen = pygame.display.get_surface()
-        draw_gradient_background(screen, 540, 300, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
-        draw_decorative_circles(screen, 540, 300)
+        draw_gradient_background(screen, 540, screen.get_height(), COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        draw_decorative_circles(screen, 540, screen.get_height())
         
         title = font_large.render("SELECT DIFFICULTY", True, COLOR_VIBRANT_YELLOW)
         title_rect = title.get_rect(center=(270, 30))
         screen.blit(title, title_rect)
         
+        if resume_btn:
+            resume_btn.draw(screen, font_small)
+        
         easy_btn.draw(screen, font_small)
         normal_btn.draw(screen, font_small)
         hard_btn.draw(screen, font_small)
+        scores_btn.draw(screen, font_small)
         
         pygame.display.flip()
 
@@ -691,14 +765,37 @@ def draw_solver_grid_offset(screen, sudoku, font, y_offset):
                 text_rect = text.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
                 screen.blit(text, text_rect)
 
-def play_game(difficulty: str, screen):
-    """Main game loop for playing sudoku."""
-    game_state = GameState(difficulty)
+def play_game(difficulty: str, screen, resume_save=None):
+    """Main game loop for playing sudoku.
+    
+    Args:
+        difficulty (str): Game difficulty
+        screen: Pygame surface
+        resume_save (dict): Optional saved game data to resume from
+    """
+    from save_manager import save_game, save_score, delete_save
+    
+    # ✅ Check if resuming from save or starting new game
+    if resume_save:
+        game_state = GameState(difficulty, resume_save)
+        print("[OK] Game resumed from save")
+    else:
+        game_state = GameState(difficulty)
+        print("[OK] New game started")
+        
     pygame.display.set_caption(f"Sudoku - {difficulty.upper()}")
     clock = pygame.time.Clock()
     screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE + 120))
+    
     font_large = pygame.font.SysFont("arial", 36)
     font_small = pygame.font.SysFont("arial", 14)
+    
+    # Timer for scoring
+    start_time = time.time()
+    
+    # Pause state
+    is_paused = False
+    pause_time_offset = 0  # To subtract pause duration from total time
     
     running = True
     while running:
@@ -708,7 +805,19 @@ def play_game(difficulty: str, screen):
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    return
+                    # Pause game and show options
+                    is_paused = True
+                    pause_result = show_pause_menu(screen, font_small)
+                    
+                    if pause_result == "resume":
+                        is_paused = False
+                        continue
+                    elif pause_result == "save_and_exit":
+                        save_game(game_state)
+                        return
+                    elif pause_result == "menu":
+                        return
+                    
                 digit_keys = {
                     pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 3,
                     pygame.K_4: 4, pygame.K_5: 5, pygame.K_6: 6,
@@ -745,6 +854,15 @@ def play_game(difficulty: str, screen):
                     game_state.select_cell(row, col)
         
         if game_state.is_complete():
+            # Game completed!
+            elapsed_time = time.time() - start_time
+            completed_cells = sum(1 for r in range(9) for c in range(9) 
+                                if game_state.current_grid[r][c] != 0 and 
+                                game_state.original_grid[r][c] == 0)
+            
+            # Save score
+            save_score(difficulty, elapsed_time, completed_cells)
+            
             result = show_victory_screen()
             if result == "restart":
                 game_state = GameState(difficulty)
@@ -760,6 +878,14 @@ def play_game(difficulty: str, screen):
         
         # Draw grid with offset
         draw_game_grid_offset(screen, game_state, font_large, font_small, 120)
+        
+        # Display current time
+        elapsed = time.time() - start_time
+        time_text = pygame.font.SysFont("arial", 14).render(
+            f"Time: {int(elapsed // 60):02d}:{int(elapsed % 60):02d}", 
+            True, COLOR_VIBRANT_CYAN
+        )
+        screen.blit(time_text, (WINDOW_SIZE - 150, 10))
         
         pygame.display.flip()
         clock.tick(60)
@@ -890,6 +1016,130 @@ def draw_game_instructions_panel(screen, font_small, difficulty):
     for i, text in enumerate(instructions_col2):
         surf = font_instructions.render(text, True, COLOR_TEXT_LIGHT)
         screen.blit(surf, (WINDOW_SIZE // 2 + 15, y_start + i * 25))
+        
+def show_pause_menu(screen, font):
+    """Display pause menu with options to resume, save, or exit.
+    
+    Returns:
+        str: 'resume', 'save_and_exit', or 'menu'
+    """
+    font_title = pygame.font.SysFont("arial", 48, bold=True)
+    font_button = pygame.font.SysFont("arial", 24)
+    
+    resume_btn = Button(170, 150, 200, 50, "RESUME", "primary")
+    save_btn = Button(170, 220, 200, 50, "SAVE & EXIT", "secondary")
+    menu_btn = Button(170, 290, 200, 50, "MAIN MENU", "success")
+    
+    paused = True
+    while paused:
+        mouse_pos = pygame.mouse.get_pos()
+        resume_btn.update_hover(mouse_pos)
+        save_btn.update_hover(mouse_pos)
+        menu_btn.update_hover(mouse_pos)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if resume_btn.is_clicked(event.pos):
+                    return "resume"
+                elif save_btn.is_clicked(event.pos):
+                    return "save_and_exit"
+                elif menu_btn.is_clicked(event.pos):
+                    return "menu"
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return "resume"
+        
+        # Draw semi-transparent overlay
+        overlay = pygame.Surface((WINDOW_SIZE, WINDOW_SIZE + 120))
+        overlay.set_alpha(200)
+        overlay.fill((0, 0, 0))
+        screen.blit(overlay, (0, 0))
+        
+        # Draw pause menu
+        draw_gradient_background(screen, WINDOW_SIZE, WINDOW_SIZE + 120, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        
+        title = font_title.render("PAUSED", True, COLOR_VIBRANT_YELLOW)
+        title_rect = title.get_rect(center=(WINDOW_SIZE // 2, 50))
+        screen.blit(title, title_rect)
+        
+        resume_btn.draw(screen, font_button)
+        save_btn.draw(screen, font_button)
+        menu_btn.draw(screen, font_button)
+        
+        hint = font.render("ESC to resume", True, (150, 150, 150))
+        screen.blit(hint, (WINDOW_SIZE // 2 - hint.get_width() // 2, 380))
+        
+        pygame.display.flip()
+        
+def scores_menu():
+    """Display scores/history screen with stats."""
+    from save_manager import load_scores, get_score_stats
+    
+    pygame.display.set_caption("Sudoku - Scores")
+    screen = pygame.display.set_mode((700, 600))
+    font_title = pygame.font.SysFont("arial", 36, bold=True)
+    font_score = pygame.font.SysFont("arial", 16)
+    font_stat = pygame.font.SysFont("arial", 18, bold=True)
+    
+    back_btn = Button(300, 540, 100, 40, "BACK", "primary")
+    
+    scores = load_scores()
+    stats = get_score_stats(scores)
+    
+    while True:
+        mouse_pos = pygame.mouse.get_pos()
+        back_btn.update_hover(mouse_pos)
+        
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if back_btn.is_clicked(event.pos):
+                    return
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return
+        
+        draw_gradient_background(screen, 700, 600, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        
+        # Title
+        title = font_title.render("GAME HISTORY", True, COLOR_VIBRANT_BLUE)
+        screen.blit(title, (150, 20))
+        
+        # Stats
+        y = 80
+        stat_title = font_stat.render(f"Total Games: {stats['total_games']}", True, COLOR_VIBRANT_YELLOW)
+        screen.blit(stat_title, (50, y))
+        y += 40
+        
+        for difficulty in ["easy", "normal", "hard"]:
+            text = font_score.render(
+                f"{difficulty.upper()}: {stats[difficulty]['count']} games | Avg: {stats[difficulty]['avg_time']:.1f}s",
+                True, COLOR_TEXT_LIGHT
+            )
+            screen.blit(text, (50, y))
+            y += 30
+        
+        # Last 10 games
+        y += 20
+        last_games_title = font_stat.render("Recent games:", True, COLOR_VIBRANT_CYAN)
+        screen.blit(last_games_title, (50, y))
+        y += 35
+        
+        for score in scores[-10:]:
+            date = score["timestamp"][:10]
+            text = font_score.render(
+                f"{date} | {score['difficulty'].upper():8} | {score['time_seconds']:6.1f}s | Cells: {score['completed_cells']}",
+                True, COLOR_TEXT_LIGHT
+            )
+            screen.blit(text, (50, y))
+            y += 25
+        
+        back_btn.draw(screen, font_score)
+        
+        pygame.display.flip()
 
 def show_victory_screen():
     """Display victory screen with confetti animation and navigation buttons."""
