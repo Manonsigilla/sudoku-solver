@@ -696,6 +696,7 @@ def play_game(difficulty: str, screen):
     game_state = GameState(difficulty)
     pygame.display.set_caption(f"Sudoku - {difficulty.upper()}")
     clock = pygame.time.Clock()
+    screen = pygame.display.set_mode((WINDOW_SIZE, WINDOW_SIZE + 120))
     font_large = pygame.font.SysFont("arial", 36)
     font_small = pygame.font.SysFont("arial", 14)
     
@@ -751,8 +752,15 @@ def play_game(difficulty: str, screen):
             else:
                 return result
         
-        screen.fill(COLOR_WHITE)
-        draw_game_grid(screen, game_state, font_large, font_small)
+        # Draw background with gradient
+        draw_gradient_background(screen, WINDOW_SIZE, WINDOW_SIZE + 120, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
+        
+        # Draw instructions panel
+        draw_game_instructions_panel(screen, font_small, difficulty)
+        
+        # Draw grid with offset
+        draw_game_grid_offset(screen, game_state, font_large, font_small, 120)
+        
         pygame.display.flip()
         clock.tick(60)
 
@@ -800,6 +808,88 @@ def draw_game_grid(screen, game_state, font_large, font_small):
             if game_state.selected_cell == cell_coord:
                 pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, (x, y, CELL_SIZE, CELL_SIZE), 3)
 
+def draw_game_grid_offset(screen, game_state, font_large, font_small, y_offset):
+    """Draw the game grid with offset from top (for instructions panel)."""
+    for i in range(10):
+        thickness = 3 if i % 3 == 0 else 1
+        pygame.draw.line(screen, COLOR_BLACK, (i * CELL_SIZE, y_offset), (i * CELL_SIZE, y_offset + WINDOW_SIZE), thickness)
+        pygame.draw.line(screen, COLOR_BLACK, (0, y_offset + i * CELL_SIZE), (WINDOW_SIZE, y_offset + i * CELL_SIZE), thickness)
+    
+    for row in range(9):
+        for col in range(9):
+            x, y = col * CELL_SIZE, y_offset + row * CELL_SIZE
+            cell_coord = (row, col)
+            
+            if game_state.original_grid[row][col] != 0:
+                bg_color = COLOR_WHITE
+            elif game_state.difficulty == "hard" and cell_coord in game_state.cell_status:
+                bg_color = game_state.hard_mode_cell_colors[cell_coord]
+            elif cell_coord in game_state.cell_status:
+                status = game_state.cell_status[cell_coord]
+                bg_color = COLOR_PASTEL_GREEN if status == "correct" else (COLOR_PASTEL_RED if status == "wrong" else COLOR_PASTEL_YELLOW)
+            else:
+                bg_color = COLOR_WHITE
+            
+            pygame.draw.rect(screen, bg_color, (x, y, CELL_SIZE, CELL_SIZE))
+            pygame.draw.rect(screen, COLOR_CELL_BORDER, (x, y, CELL_SIZE, CELL_SIZE), 1)
+            
+            if game_state.current_grid[row][col] != 0:
+                num = game_state.current_grid[row][col]
+                color = COLOR_BLACK if game_state.original_grid[row][col] != 0 else COLOR_VIBRANT_BLUE
+                text = font_large.render(str(num), True, color)
+                text_rect = text.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
+                screen.blit(text, text_rect)
+            
+            if cell_coord in game_state.stash and game_state.current_grid[row][col] == 0:
+                stashed = sorted(game_state.stash[cell_coord])
+                for idx, num in enumerate(stashed):
+                    sx = x + 4 + (idx % 3) * 18
+                    sy = y + 2 + (idx // 3) * 16
+                    text = font_small.render(str(num), True, (150, 150, 150))
+                    screen.blit(text, (sx, sy))
+            
+            if game_state.selected_cell == cell_coord:
+                pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, (x, y, CELL_SIZE, CELL_SIZE), 3)
+                
+def draw_game_instructions_panel(screen, font_small, difficulty):
+    """Draw instructions panel at the top of the game screen."""
+    panel_height = 120
+    panel_rect = pygame.Rect(0, 0, WINDOW_SIZE, panel_height)
+    
+    # Background du panel
+    pygame.draw.rect(screen, COLOR_BG_SECONDARY, panel_rect)
+    pygame.draw.rect(screen, COLOR_VIBRANT_BLUE, panel_rect, 2)
+    
+    # Titre
+    title_font = pygame.font.SysFont("arial", 18, bold=True)
+    title = title_font.render("CONTROLS", True, COLOR_VIBRANT_YELLOW)
+    screen.blit(title, (15, 8))
+    
+    # Instructions en 2 colonnes
+    font_instructions = pygame.font.SysFont("arial", 14)
+    
+    # Colonne 1
+    instructions_col1 = [
+        "1-9: Pencil marks",
+        "Ctrl+1-9: Place number",
+        "↑↓←→: Move around",
+    ]
+    
+    # Colonne 2
+    instructions_col2 = [
+        "Enter: Auto-place",
+        "ESC: Exit game",
+        f"Difficulty: {difficulty.upper()}",
+    ]
+    
+    y_start = 35
+    for i, text in enumerate(instructions_col1):
+        surf = font_instructions.render(text, True, COLOR_TEXT_LIGHT)
+        screen.blit(surf, (15, y_start + i * 25))
+    
+    for i, text in enumerate(instructions_col2):
+        surf = font_instructions.render(text, True, COLOR_TEXT_LIGHT)
+        screen.blit(surf, (WINDOW_SIZE // 2 + 15, y_start + i * 25))
 
 def show_victory_screen():
     """Display victory screen with confetti animation and navigation buttons."""
