@@ -22,3 +22,7 @@ venv/
 
 # --- Benchmarks ---
 benchmarks.json
+
+# --- Generated files ---
+saves/
+*.json
