@@ -831,15 +831,14 @@ def run_all_benchmarks(
         f for f in os.listdir(grids_dir) if f.endswith(".txt")
     )
 
-    algos = [a for a in ALGORITHMS if not (skip_brute and a[0] == "brute")]
-    total = len(grid_files) * len(algos)
+    total = len(grid_files) * len(ALGORITHMS)
     results = []
     done = 0
 
     for grid_file in grid_files:
         filepath = os.path.join(grids_dir, grid_file)
 
-        for algo_name, method_name in algos:
+        for algo_name, method_name in ALGORITHMS:
             if cancel_check and cancel_check():
                 return results
 
@@ -847,6 +846,21 @@ def run_all_benchmarks(
                 progress_callback(grid_file, algo_name, done, total)
 
             sg = SudokuGrid(filepath)
+
+            if skip_brute and algo_name == "brute":
+                cells_empty = len(get_all_empty(sg.original))
+                placeholder = {
+                    "algo": "brute",
+                    "time_ms": 300_000.0,
+                    "iterations": 0,
+                    "cells_empty": cells_empty,
+                    "solved": False,
+                }
+                save_result(grid_file, "brute", 300_000.0, 0, cells_empty, 0)
+                results.append(placeholder)
+                done += 1
+                continue
+
             solve_func = getattr(sg, method_name)
             result = run_benchmark(
                 sg.original, algo_name, solve_func, grid_file,

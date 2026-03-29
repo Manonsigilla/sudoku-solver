@@ -1598,6 +1598,7 @@ def show_results_menu():
                         try:
                             run_all_benchmarks(
                                 grids_dir,
+                                skip_brute=True,
                                 progress_callback=on_progress,
                                 cancel_check=lambda: state["cancel"],
                             )
