@@ -10,12 +10,16 @@ Usage:
     python regenerate_benchmarks.py --skip-brute
 """
 
+# ============================================================================
+# CLI tool to re-run all algorithms on all grids and populate results.db
+# ============================================================================
+
 import os
 import sys
 import time
 
 from script import SudokuGrid
-from benchmark import run_benchmark, DB_PATH
+from solver import run_benchmark, DB_PATH
 
 GRIDS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "grids")
 

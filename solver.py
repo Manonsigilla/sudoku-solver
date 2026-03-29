@@ -11,7 +11,10 @@
 # All algorithms modify grid in-place.
 # =============================================================================
 
+from collections.abc import Callable
 import copy
+import os
+import sqlite3
 import time
 
 
@@ -19,7 +22,7 @@ import time
 # Public helpers
 # =============================================================================
 
-def find_empty(grid):
+def find_empty(grid: list[list[int]]) -> tuple[int, int] | None:
     """Find the first empty cell (value 0), scanning top-to-bottom,
     left-to-right. Returns (row, col) or None if no empty cell."""
     for row in range(9):
@@ -29,7 +32,7 @@ def find_empty(grid):
     return None
 
 
-def get_all_empty(grid):
+def get_all_empty(grid: list[list[int]]) -> list[tuple[int, int]]:
     """Return a list of all empty cell positions (row, col)."""
     empty = []
     for row in range(9):
@@ -39,7 +42,7 @@ def get_all_empty(grid):
     return empty
 
 
-def is_grid_valid(grid):
+def is_grid_valid(grid: list[list[int]]) -> bool:
     """Check if a fully completed grid is a valid sudoku solution.
     Verifies all 9 rows, 9 columns, and 9 blocks for duplicates."""
     # Check each row
@@ -117,7 +120,7 @@ for _br in range(3):
                                 for _c in range(_bc * 3, _bc * 3 + 3)])
 
 
-def build_candidates(grid):
+def build_candidates(grid: list[list[int]]) -> dict[tuple[int, int], set[int]]:
     """Build the candidate dictionary for each empty cell.
     For each empty cell (r, c), compute the set of digits 1-9 that are
     not already present in the same row, column, or block.
@@ -151,6 +154,9 @@ def _find_mrv_cell(candidates):
         if len(cands) < best_count:
             best_count = len(cands)
             best_cell = cell
+    # A cell with 0 candidates means contradiction
+    if best_count == 0:
+        return None
     return best_cell
 
 
@@ -238,7 +244,11 @@ def _propagate(candidates, grid, callback=None):
 # Algorithm 1: Brute Force with callback and timeout
 # =============================================================================
 
-def brute_force_with_callback(grid, is_valid_func, callback=None):
+def brute_force_with_callback(
+    grid: list[list[int]],
+    is_valid_func: Callable,
+    callback: Callable | None = None,
+) -> bool:
     """Brute force with callback for animation and 30-second timeout.
     Reproduces the logic of the original brute_force: fills all cells
     without checking validity, then validates the complete grid at the end.
@@ -248,6 +258,8 @@ def brute_force_with_callback(grid, is_valid_func, callback=None):
     Returns True if a solution is found, False if timeout or failure."""
     # Collect all empty cells upfront
     empty_cells = get_all_empty(grid)
+    # Save grid state for restoration on failure (BUG 2 fix)
+    grid_copy = [r[:] for r in grid]
     # Start timestamp for timeout
     start_time = time.time()
     # Counter to check timeout only every 1000 iterations
@@ -285,14 +297,24 @@ def brute_force_with_callback(grid, is_valid_func, callback=None):
             callback(row, col, 0, "remove")
         return False
 
-    return try_fill(0)
+    result = try_fill(0)
+    # Restore grid on failure or timeout (BUG 2 fix)
+    if not result:
+        for r in range(9):
+            for c in range(9):
+                grid[r][c] = grid_copy[r][c]
+    return result
 
 
 # =============================================================================
 # Algorithm 2: Backtracking with callback
 # =============================================================================
 
-def backtracking_with_callback(grid, is_valid_func, callback=None):
+def backtracking_with_callback(
+    grid: list[list[int]],
+    is_valid_func: Callable,
+    callback: Callable | None = None,
+) -> bool:
     """Classic backtracking with callback for animation.
     Reproduces the logic of the original backtracking: finds the first empty
     cell, tries digits 1-9 checking validity BEFORE placement.
@@ -330,7 +352,11 @@ def backtracking_with_callback(grid, is_valid_func, callback=None):
 # Algorithm 3: Backtracking + MRV (Minimum Remaining Values)
 # =============================================================================
 
-def backtracking_mrv(grid, is_valid_func, callback=None):
+def backtracking_mrv(
+    grid: list[list[int]],
+    is_valid_func: Callable,
+    callback: Callable | None = None,
+) -> bool:
     """Improved backtracking with MRV heuristic.
     Instead of picking the first empty cell (top-left as in classic
     backtracking), picks the cell with the FEWEST valid candidates.
@@ -359,7 +385,7 @@ def backtracking_mrv(grid, is_valid_func, callback=None):
         # Pick the cell with the fewest candidates (MRV)
         best_cell = _find_mrv_cell(candidates)
         if best_cell is None:
-            return True
+            return False
 
         row, col = best_cell
         cands = candidates[best_cell]
@@ -385,6 +411,7 @@ def backtracking_mrv(grid, is_valid_func, callback=None):
                     # Contradiction detection
                     if len(candidates[peer]) == 0:
                         contradiction = True
+                        break
 
             # Remove current cell from candidates (it's filled)
             saved_cands = candidates.pop(best_cell)
@@ -409,7 +436,11 @@ def backtracking_mrv(grid, is_valid_func, callback=None):
 # Algorithm 4: Constraint Propagation AC-3 (without search)
 # =============================================================================
 
-def constraint_propagation(grid, is_valid_func, callback=None):
+def constraint_propagation(
+    grid: list[list[int]],
+    is_valid_func: Callable,
+    callback: Callable | None = None,
+) -> bool:
     """Solve by constraint propagation (AC-3) WITHOUT backtracking.
     Iteratively applies Naked Single and Hidden Single rules until
     stabilization. Does NOT search if propagation alone is insufficient.
@@ -424,11 +455,17 @@ def constraint_propagation(grid, is_valid_func, callback=None):
     # Build initial candidates
     candidates = build_candidates(grid)
 
+    # Save grid state before propagation (BUG 1 fix)
+    grid_copy = [r[:] for r in grid]
+
     # Propagate constraints
     no_contradiction = _propagate(candidates, grid, callback)
 
     if not no_contradiction:
-        # Contradiction detected: the grid is invalid
+        # Contradiction: restore grid to its original state
+        for r in range(9):
+            for c in range(9):
+                grid[r][c] = grid_copy[r][c]
         return False
 
     # Check if the grid is fully solved
@@ -440,7 +477,11 @@ def constraint_propagation(grid, is_valid_func, callback=None):
 # Algorithm 5: AC-3 Propagation + Backtracking MRV (full Norvig)
 # =============================================================================
 
-def propagation_mrv(grid, is_valid_func, callback=None):
+def propagation_mrv(
+    grid: list[list[int]],
+    is_valid_func: Callable,
+    callback: Callable | None = None,
+) -> bool:
     """Solve by constraint propagation + MRV backtracking.
     This is Peter Norvig's approach ("Solving Every Sudoku Puzzle").
 
@@ -492,15 +533,188 @@ def propagation_mrv(grid, is_valid_func, callback=None):
             if solve(candidates, grid):
                 return True
 
-            # Backtrack: restore complete state
+            # Backtrack: send "remove" for ALL cells changed by propagation
+            # before restoring grid state (BUG 3 fix)
+            if callback:
+                for r in range(9):
+                    for c in range(9):
+                        if grid[r][c] != grid_copy[r][c]:
+                            callback(r, c, 0, "remove")
+            # Restore complete state
             for r in range(9):
                 for c in range(9):
                     grid[r][c] = grid_copy[r][c]
             candidates.clear()
             candidates.update(candidates_copy)
-            if callback:
-                callback(row, col, 0, "remove")
 
         return False
 
     return solve(candidates, grid)
+
+
+# =============================================================================
+# Benchmark / SQLite persistence
+# =============================================================================
+
+DB_PATH: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results.db")
+
+
+def _init_db() -> None:
+    """Create the 'benchmarks' table if it doesn't exist yet.
+    Called automatically before each read/write operation."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS benchmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT DEFAULT (datetime('now')),
+                grid_file TEXT NOT NULL,
+                algo TEXT NOT NULL,
+                time_ms REAL NOT NULL,
+                iterations INTEGER NOT NULL,
+                cells_empty INTEGER NOT NULL,
+                solved INTEGER NOT NULL
+            )
+        """)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def run_benchmark(
+    original: list[list[int]],
+    algo_name: str,
+    solve_func,
+    grid_file: str,
+) -> dict:
+    """Run a benchmark: measure execution time and iterations of an algorithm.
+
+    Parameters:
+        original    -- the original grid (to count empty cells)
+        algo_name   -- algorithm name (e.g. "brute", "backtrack", "propagation_mrv")
+        solve_func  -- callable(callback) -> bool. Must accept a callback.
+        grid_file   -- grid file name (e.g. "grid_1.txt") for the database
+
+    Returns a dict with the benchmark results."""
+    cells_empty = len(get_all_empty(original))
+
+    # Iteration counter via callback
+    counter = {"n": 0}
+
+    def count_callback(row, col, num, action):
+        """Callback that counts each call (= 1 iteration)."""
+        counter["n"] += 1
+
+    # Measure execution time
+    start = time.perf_counter()
+    solved = solve_func(count_callback)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    result = {
+        "algo": algo_name,
+        "time_ms": round(elapsed_ms, 2),
+        "iterations": counter["n"],
+        "cells_empty": cells_empty,
+        "solved": solved,
+    }
+
+    # Save to SQLite (BUG B2 fix: int(bool(solved)) handles None)
+    save_result(grid_file, algo_name, result["time_ms"],
+                result["iterations"], cells_empty, int(bool(solved)))
+
+    return result
+
+
+def save_result(
+    grid_file: str,
+    algo: str,
+    time_ms: float,
+    iterations: int,
+    cells_empty: int,
+    solved: int,
+) -> None:
+    """Save a single benchmark result to SQLite."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            "INSERT INTO benchmarks "
+            "(grid_file, algo, time_ms, iterations, cells_empty, solved) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (grid_file, algo, time_ms, iterations, cells_empty, int(bool(solved))),
+        )
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        print(f"[WARN] Could not save benchmark result: {e}")
+    finally:
+        conn.close()
+
+
+def get_all_results() -> list[dict]:
+    """Load all benchmark results from SQLite.
+    Returns a list of dicts, sorted by timestamp descending."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM benchmarks ORDER BY timestamp DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def get_results_by_grid(grid_file: str) -> list[dict]:
+    """Load benchmark results for a specific grid.
+    Returns a list of dicts, sorted by timestamp descending."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM benchmarks WHERE grid_file = ? ORDER BY timestamp DESC",
+            (grid_file,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+def get_latest_results() -> list[dict]:
+    """Load the most recent result for each (grid_file, algo) pair.
+    Useful for comparison charts: we only want the latest run.
+    Returns a list of dicts."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.row_factory = sqlite3.Row
+        # BUG B3 fix: use MAX(timestamp) instead of MAX(id)
+        rows = conn.execute("""
+            SELECT b.* FROM benchmarks b
+            INNER JOIN (
+                SELECT grid_file, algo, MAX(timestamp) as max_ts
+                FROM benchmarks
+                GROUP BY grid_file, algo
+            ) latest ON b.grid_file = latest.grid_file
+                AND b.algo = latest.algo
+                AND b.timestamp = latest.max_ts
+            ORDER BY b.grid_file, b.algo
+        """).fetchall()
+        return [dict(row) for row in rows]
+    except sqlite3.OperationalError:
+        return []
+    finally:
+        conn.close()
+
+
+# =============================================================================
+# Backward-compatible aliases
+# =============================================================================
+
+brute_force = brute_force_with_callback
+backtracking = backtracking_with_callback
