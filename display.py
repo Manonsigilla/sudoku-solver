@@ -388,13 +388,13 @@ def set_volume(vol: float) -> None:
             snd.set_volume(_audio_volume)
 
 
-def draw_audio_controls(screen, y=660) -> None:
+def draw_audio_controls(screen, y=660, x=530) -> None:
     """Draw mute button + volume slider at bottom-right of screen."""
     global _mute_rect, _slider_rect
     font_icon = pygame.font.SysFont("arial", 18, bold=True)
 
     # Mute button (30x30)
-    _mute_rect = pygame.Rect(530, y, 30, 30)
+    _mute_rect = pygame.Rect(x, y, 30, 30)
     mute_color = COLOR_VIBRANT_RED if _audio_muted else COLOR_VIBRANT_GREEN
     pygame.draw.rect(screen, mute_color, _mute_rect, border_radius=6)
     icon = font_icon.render("M" if _audio_muted else "S", True, (255, 255, 255))
@@ -402,7 +402,7 @@ def draw_audio_controls(screen, y=660) -> None:
     screen.blit(icon, icon_rect)
 
     # Volume slider track (120x10)
-    track_x, track_y = 570, y + 10
+    track_x, track_y = x + 40, y + 10
     track_w, track_h = 120, 10
     pygame.draw.rect(screen, (80, 80, 80),
                      (track_x, track_y, track_w, track_h), border_radius=4)
@@ -447,8 +447,8 @@ def handle_audio_events(event) -> bool:
 
 def _apply_slider_volume(mouse_x: int) -> None:
     """Compute and apply volume from mouse X position on the slider."""
-    track_x = 570
-    track_w = 120
+    track_x = _slider_rect.x + 7
+    track_w = _slider_rect.width - 14
     ratio = (mouse_x - track_x) / max(1, track_w)
     set_volume(ratio)
 
@@ -687,7 +687,14 @@ class GameState:
 def main_menu():
     """Display main menu with Play, Solver, and Exit options."""
     global scene_manager
-    pygame.mixer.pre_init(44100, -16, 2, 512)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except (AttributeError, OSError):
+            pass
+    _audio_buffer = 2048 if sys.platform == "win32" else 512
+    pygame.mixer.pre_init(44100, -16, 2, _audio_buffer)
     pygame.init()
     init_sounds()
     scene_manager = SceneManager()
@@ -1498,7 +1505,7 @@ def show_results_menu():
         toggle_rects[algo] = pygame.Rect(x, toggle_y, toggle_w, toggle_h)
 
     # Action buttons
-    btn_y = WINDOW_HEIGHT - 55
+    btn_y = WINDOW_HEIGHT - 75
     back_btn = Button(10, btn_y, 100, 40, "BACK", "primary")
     csv_btn = Button(130, btn_y, 130, 40, "EXPORT CSV", "secondary")
     pdf_btn = Button(280, btn_y, 130, 40, "EXPORT PDF", "secondary")
@@ -1864,7 +1871,7 @@ def show_results_menu():
             screen.blit(cancel_hint, cancel_hint.get_rect(
                 center=(WINDOW_WIDTH // 2, panel_y_pos + 130)))
 
-        draw_audio_controls(screen)
+        draw_audio_controls(screen, y=670)
         pygame.display.flip()
         clock.tick(60)
 
