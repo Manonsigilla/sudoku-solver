@@ -40,6 +40,8 @@ python3 main.py
 
 ### Mode JEU (Play)
 
+![Flux mode jeu](docs/flux-jeu.svg)
+
 - Cliquez sur **PLAY** et choisissez une difficulté (**EASY**, **NORMAL**, **HARD**).
 - **Contrôles clavier** :
   - **Chiffre seul** : Pose une "option" (pencil mark / stash) en gris.
@@ -52,6 +54,8 @@ python3 main.py
 - **Scores** : Chaque partie terminée enregistre le temps et la difficulté. Le bouton **SCORES** dans le menu de difficulté affiche l'historique et les statistiques par niveau.
 
 ### Mode SOLVER
+
+![Flux mode solver](docs/flux-solver.svg)
 
 - Choisissez une grille parmi les fichiers présents dans `grids/`.
 - Choisissez l'un des 5 algorithmes :
@@ -68,7 +72,16 @@ python3 main.py
 
 - Chaque résolution enregistre le temps, le nombre d'itérations, le nombre de cases vides et le statut dans `results.db` (base SQLite).
 - Tous les runs sont conservés (pas seulement le meilleur temps).
-- Le bouton **RESULTS** dans le menu Solver ouvre 4 graphiques matplotlib : barres de temps par algorithme, barres d'itérations, courbe temps vs difficulté, et formules de complexité théorique.
+- Le bouton **RESULTS** dans le menu Solver ouvre un écran avec **5 onglets** :
+  1. **Time** : barres groupées du temps d'exécution par algorithme et par grille (échelle log).
+  2. **Iterations** : barres groupées du nombre d'itérations.
+  3. **Difficulty** : courbes du temps en fonction du nombre de cases vides.
+  4. **Formulas** : formules de complexité algorithmique en LaTeX.
+  5. **Manage** : tableau de tous les résultats avec suppression individuelle (scroll vertical).
+- **Toggle par algorithme** : 5 boutons en bas permettent de masquer/afficher chaque algorithme sur les graphiques.
+- **Export** : boutons CSV (tous les résultats) et PDF (graphiques).
+- **RUN ALL** : lance tous les algorithmes sur toutes les grilles depuis l'interface, avec barre de progression et annulation.
+- **RESET** : supprime tous les résultats après confirmation.
 - L'outil CLI `regenerate_benchmarks.py` permet de relancer tous les algorithmes sur toutes les grilles :
 
   ```bash
@@ -80,15 +93,30 @@ python3 main.py
 
 ## Architecture Technique
 
+![Architecture en couches](docs/archi-couches.svg)
+
 - **`main.py`** : Point d'entrée (lance le menu Pygame).
-- **`script.py`** : Logique métier -- classe `SudokuGrid`, génération de puzzles avec garantie d'unicité, validation des coups, cache `solutions.json`.
-- **`solver.py`** : Algorithmes de résolution (5 algorithmes) et benchmarking SQLite (`results.db`).
-- **`display.py`** : Interface Pygame complète -- `SceneManager` (transitions), `GameState`, `Button`, sauvegarde/reprise JSON, menus, jeu interactif, solver animé, graphiques matplotlib.
+- **`script.py`** (~440 lignes) : Logique métier -- classe `SudokuGrid`, génération de puzzles avec garantie d'unicité, validation des coups, cache `solutions.json`.
+- **`solver.py`** (~885 lignes) : Algorithmes de résolution (5 algorithmes), benchmarking SQLite (`results.db`), CRUD (suppression, mise à jour), `run_all_benchmarks()`.
+- **`display.py`** (~2400 lignes) : Interface Pygame complète -- `SceneManager` (transitions), `GameState`, `Button`, sauvegarde/reprise JSON, menus, jeu interactif, solver animé, graphiques matplotlib (5 onglets), système audio (6 SFX + 2 musiques).
 - **`regenerate_benchmarks.py`** : Outil CLI pour relancer les benchmarks sur toutes les grilles.
 - **`grids/`** : Fichiers de grilles au format texte (`_` pour vide).
+- **`sounds/`** : 6 effets sonores (`click`, `select`, `place`, `error`, `victory`, `ding`) et 2 musiques de fond (`ambient_calm.ogg`, `mondotek_alive.ogg`).
 - **`saves/`** : Sauvegardes JSON des parties (`scores.json`, `current_game.json`).
 - **`solutions.json`** : Cache puzzle vers solution (évite de résoudre deux fois la même grille).
 - **`results.db`** : Base SQLite des benchmarks (exclue du Git).
+
+---
+
+## Audio
+
+L'application inclut un système audio complet avec mute/volume :
+
+- **Effets sonores** : `click` (bouton), `select` (case), `place` (chiffre correct), `error` (mauvaise réponse), `victory` (puzzle terminé), `ding` (fin solver).
+- **Musiques de fond** : `ambient_calm.ogg` (mode jeu, 30% volume), `mondotek_alive.ogg` (écran résultats).
+- **Contrôles** : bouton mute (M/S) + slider de volume, affichés en bas à droite de chaque écran.
+
+Les fichiers audio sont dans `sounds/`. L'application fonctionne sans problème si le dossier est absent (fallback silencieux).
 
 ---
 
