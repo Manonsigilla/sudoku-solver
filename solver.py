@@ -25,6 +25,11 @@ import sqlite3
 import time
 
 
+class BenchmarkCancelled(Exception):
+    """Raised inside a benchmark callback when the user cancels via ESC."""
+    pass
+
+
 # =============================================================================
 # Public helpers
 # =============================================================================
@@ -593,16 +598,18 @@ def run_benchmark(
     algo_name: str,
     solve_func,
     grid_file: str,
-) -> dict:
+    cancel_check: Callable | None = None,
+) -> dict | None:
     """Run a benchmark: measure execution time and iterations of an algorithm.
 
     Parameters:
-        original    -- the original grid (to count empty cells)
-        algo_name   -- algorithm name (e.g. "brute", "backtrack", "propagation_mrv")
-        solve_func  -- callable(callback) -> bool. Must accept a callback.
-        grid_file   -- grid file name (e.g. "grid_1.txt") for the database
+        original      -- the original grid (to count empty cells)
+        algo_name     -- algorithm name (e.g. "brute", "backtrack", "propagation_mrv")
+        solve_func    -- callable(callback) -> bool. Must accept a callback.
+        grid_file     -- grid file name (e.g. "grid_1.txt") for the database
+        cancel_check  -- optional callable() -> bool; checked every 500 iterations
 
-    Returns a dict with the benchmark results."""
+    Returns a dict with the benchmark results, or None if cancelled."""
     cells_empty = len(get_all_empty(original))
 
     # Iteration counter via callback
@@ -611,10 +618,15 @@ def run_benchmark(
     def count_callback(row, col, num, action):
         """Callback that counts each call (= 1 iteration)."""
         counter["n"] += 1
+        if cancel_check and counter["n"] % 500 == 0 and cancel_check():
+            raise BenchmarkCancelled()
 
     # Measure execution time
     start = time.perf_counter()
-    solved = solve_func(count_callback)
+    try:
+        solved = solve_func(count_callback)
+    except BenchmarkCancelled:
+        return None
     elapsed_ms = (time.perf_counter() - start) * 1000
 
     result = {
@@ -717,6 +729,138 @@ def get_latest_results() -> list[dict]:
         return []
     finally:
         conn.close()
+
+
+# =============================================================================
+# CRUD -- Delete & Update
+# =============================================================================
+
+
+def delete_result(result_id: int) -> bool:
+    """Delete a single benchmark result by its ID.
+    Returns True if a row was actually deleted."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.execute(
+            "DELETE FROM benchmarks WHERE id = ?", (result_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_all_results() -> int:
+    """Delete all benchmark results (full reset).
+    Returns the number of rows deleted."""
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.execute("DELETE FROM benchmarks")
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+_UPDATABLE_COLUMNS = frozenset(
+    {"grid_file", "algo", "time_ms", "iterations", "cells_empty", "solved"}
+)
+
+
+def update_result(result_id: int, **fields) -> bool:
+    """Update specific fields of a benchmark result.
+    Only columns in _UPDATABLE_COLUMNS are accepted; unknown keys are ignored.
+    Returns True if a row was actually updated."""
+    safe = {k: v for k, v in fields.items() if k in _UPDATABLE_COLUMNS}
+    if not safe:
+        return False
+
+    set_clause = ", ".join(f"{col} = ?" for col in safe)
+    values = list(safe.values()) + [result_id]
+
+    _init_db()
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.execute(
+            f"UPDATE benchmarks SET {set_clause} WHERE id = ?", values
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+# =============================================================================
+# Run All Benchmarks (reusable from CLI and GUI)
+# =============================================================================
+
+ALGORITHMS = [
+    ("brute", "solve_brute_force"),
+    ("backtrack", "solve_backtracking"),
+    ("backtrack_mrv", "solve_backtracking_mrv"),
+    ("propagation", "solve_propagation"),
+    ("propagation_mrv", "solve_propagation_mrv"),
+]
+
+
+def run_all_benchmarks(
+    grids_dir: str,
+    skip_brute: bool = False,
+    progress_callback: Callable | None = None,
+    cancel_check: Callable | None = None,
+) -> list[dict]:
+    """Run every algorithm on every grid file and save results to SQLite.
+
+    Parameters:
+        grids_dir          -- path to the directory containing .txt grid files
+        skip_brute         -- if True, skip the brute force algorithm
+        progress_callback  -- optional callable(grid_file, algo_name, done, total)
+                              called before each benchmark starts
+        cancel_check       -- optional callable() -> bool; return True to abort
+
+    Returns a list of result dicts from run_benchmark()."""
+    # Lazy import to avoid circular dependency (script.py imports solver.py)
+    from script import SudokuGrid
+
+    if not os.path.isdir(grids_dir):
+        return []
+
+    grid_files = sorted(
+        f for f in os.listdir(grids_dir) if f.endswith(".txt")
+    )
+
+    algos = [a for a in ALGORITHMS if not (skip_brute and a[0] == "brute")]
+    total = len(grid_files) * len(algos)
+    results = []
+    done = 0
+
+    for grid_file in grid_files:
+        filepath = os.path.join(grids_dir, grid_file)
+
+        for algo_name, method_name in algos:
+            if cancel_check and cancel_check():
+                return results
+
+            if progress_callback:
+                progress_callback(grid_file, algo_name, done, total)
+
+            sg = SudokuGrid(filepath)
+            solve_func = getattr(sg, method_name)
+            result = run_benchmark(
+                sg.original, algo_name, solve_func, grid_file,
+                cancel_check=cancel_check,
+            )
+            if result is None:
+                return results
+            results.append(result)
+            done += 1
+
+    if progress_callback:
+        progress_callback("", "", done, total)
+
+    return results
 
 
 # =============================================================================

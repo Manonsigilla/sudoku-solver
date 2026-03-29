@@ -18,68 +18,42 @@ import os
 import sys
 import time
 
-from script import SudokuGrid
-from solver import run_benchmark, DB_PATH
+from solver import run_all_benchmarks, DB_PATH, ALGORITHMS
 
 GRIDS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "grids")
-
-# Algorithm registry: (name, method_name)
-ALGORITHMS = [
-    ("brute", "solve_brute_force"),
-    ("backtrack", "solve_backtracking"),
-    ("backtrack_mrv", "solve_backtracking_mrv"),
-    ("propagation", "solve_propagation"),
-    ("propagation_mrv", "solve_propagation_mrv"),
-]
 
 
 def main():
     """Run all algorithms on every grid file and save results to SQLite."""
     skip_brute = "--skip-brute" in sys.argv
 
-    grid_files = sorted(
-        f for f in os.listdir(GRIDS_DIR) if f.endswith(".txt")
-    )
-
-    if not grid_files:
-        print("No grid files found in", GRIDS_DIR)
-        sys.exit(1)
-
     print(f"Database: {DB_PATH}")
-    print(f"Grids: {len(grid_files)} | Algorithms: {len(ALGORITHMS)}")
+    print(f"Algorithms: {len(ALGORITHMS)}")
     if skip_brute:
         print("(skipping brute force)")
     print()
 
     total_start = time.perf_counter()
 
-    for grid_file in grid_files:
-        filepath = os.path.join(GRIDS_DIR, grid_file)
-        print(f"--- {grid_file} ---")
+    def on_progress(grid_file, algo_name, done, total):
+        if grid_file:
+            print(f"  [{done + 1}/{total}] {algo_name:20s} on {grid_file}...", flush=True)
 
-        for algo_name, method_name in ALGORITHMS:
-            if skip_brute and algo_name == "brute":
-                print(f"  {algo_name:20s} [SKIPPED]")
-                continue
+    results = run_all_benchmarks(
+        GRIDS_DIR,
+        skip_brute=skip_brute,
+        progress_callback=on_progress,
+    )
 
-            print(f"  {algo_name:20s} running...", flush=True)
-
-            # Reload a fresh grid for each algorithm
-            sg = SudokuGrid(filepath)
-            solve_func = getattr(sg, method_name)
-
-            result = run_benchmark(sg.original, algo_name, solve_func, grid_file)
-
-            status = "OK" if result["solved"] else "FAIL"
-            print(
-                f"  {algo_name:20s} {result['time_ms']:10.2f} ms  "
-                f"{result['iterations']:8d} iter  [{status}]"
-            )
-
-        print()
+    for r in results:
+        status = "OK" if r["solved"] else "FAIL"
+        print(
+            f"  {r['algo']:20s} {r['time_ms']:10.2f} ms  "
+            f"{r['iterations']:8d} iter  [{status}]"
+        )
 
     elapsed = time.perf_counter() - total_start
-    print(f"Done in {elapsed:.2f}s. Results saved to {DB_PATH}")
+    print(f"\nDone in {elapsed:.2f}s. {len(results)} results saved to {DB_PATH}")
 
 
 if __name__ == "__main__":
