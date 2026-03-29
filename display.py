@@ -1,3 +1,10 @@
+"""Pygame-based GUI for the Sudoku application.
+
+Handles all user-facing screens: main menu, difficulty selection, interactive
+play mode with pencil marks, animated solver visualization, benchmark results
+(matplotlib), game saves/loads, and score history.
+"""
+
 import time
 import pygame
 import sys
@@ -656,7 +663,7 @@ def solver_menu_pygame():
     scene_manager.set_scene("Solver")
     screen = scene_manager.get_window()
     
-    # GRID BUTTONS
+    # --- Layout: grid file buttons at the top ---
     grid_list_y = 80
     grid_btn_h = 40
     grid_btn_w = 620
@@ -669,7 +676,7 @@ def solver_menu_pygame():
         btn = Button(grid_btn_x, y, grid_btn_w, grid_btn_h, f, "primary")
         grid_buttons.append(btn)
 
-    # ALGORITHM BUTTONS
+    # --- Layout: algorithm selection buttons below the grid list ---
     algo_list_y = grid_list_y + grid_list_h + 50
     algo_names = [
         "Brute Force",
@@ -687,7 +694,7 @@ def solver_menu_pygame():
         y = algo_list_y + i * algo_btn_step
         algo_buttons.append(Button(x, y, algo_btn_w, algo_btn_h, name, "secondary"))
 
-    # CONTROL BUTTONS
+    # --- Layout: SOLVE and RESULTS action buttons at the bottom ---
     buttons_y = algo_list_y + len(algo_names) * algo_btn_step + 15
     solve_btn = Button(150, buttons_y, 140, 50, "SOLVE", "success")
     results_btn = Button(410, buttons_y, 140, 50, "RESULTS", "primary")
@@ -758,6 +765,7 @@ def solver_menu_pygame():
             if btn.text == selected_algo:
                 pygame.draw.rect(screen, COLOR_VIBRANT_CYAN, btn.rect, 4, border_radius=12)
         
+        # SOLVE button is grayed out until both a grid and algorithm are selected
         if selected_grid and selected_algo:
             solve_btn.draw(screen, font)
         else:
@@ -798,6 +806,7 @@ def run_solver(filepath, algo):
     font_large = pygame.font.SysFont("arial", 36)
     font_status = pygame.font.SysFont("arial", 18)
     
+    # Mutable list so the nested callback can increment it (closure scope)
     step_count = [0]
     UPDATE_EVERY = 10
     start_time_perf = pygame.time.get_ticks()
@@ -848,6 +857,7 @@ def run_solver(filepath, algo):
 
     algo_func = algo_map.get(algo, propagation_mrv)
     
+    # _SolverAborted is raised inside the callback when the user presses ESC
     try:
         success = algo_func(sudoku.grid, sudoku.is_valid, solver_callback)
     except _SolverAborted:
@@ -858,6 +868,7 @@ def run_solver(filepath, algo):
     
     grid_name = os.path.basename(filepath)
     
+    # Persist benchmark results to SQLite from the UI
     try:
         algo_key = {
             "Brute Force": "brute",
@@ -866,9 +877,9 @@ def run_solver(filepath, algo):
             "Constraint Propagation": "propagation",
             "Propagation MRV": "propagation_mrv",
         }.get(algo, "unknown")
-        
+
         cells_empty = sum(1 for r in sudoku.original for c in r if c == 0)
-        
+
         _init_db()
         conn = sqlite3.connect(DB_PATH)
         conn.execute(
@@ -883,7 +894,8 @@ def run_solver(filepath, algo):
     
     result_text = "SOLVED!" if success else "NO SOLUTION FOUND"
     pygame.display.set_caption(f"Solver - {algo} - {result_text}")
-    
+
+    # Post-solve display loop: show final grid until user presses ESC
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -1160,7 +1172,7 @@ def play_game(difficulty: str, screen, resume_save=None):
                 sys.exit()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    # Pause game et calculer le temps actuel
+                    # Pause the game and snapshot elapsed time
                     is_paused = True
                     current_elapsed = time.time() - start_time
                     pause_result = show_pause_menu(screen, font_small)
@@ -1196,11 +1208,12 @@ def play_game(difficulty: str, screen, resume_save=None):
                     else:
                         game_state.add_to_stash(num)
                 elif event.key == pygame.K_RETURN:
-                    # ✅ Auto-validate ONLY if exactly 1 stashed number
+                    # Auto-validate: only works if the cell has exactly 1 pencil mark
                     if game_state.selected_cell in game_state.stash and len(game_state.stash[game_state.selected_cell]) == 1:
                         num = next(iter(game_state.stash[game_state.selected_cell]))
                         game_state.validate_move(num)
                 elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+                    # Arrow keys: move selection with wrapping (modulo 9)
                     row, col = game_state.selected_cell
                     if event.key == pygame.K_UP: row = (row - 1) % 9
                     elif event.key == pygame.K_DOWN: row = (row + 1) % 9
@@ -1216,7 +1229,7 @@ def play_game(difficulty: str, screen, resume_save=None):
                     game_state.select_cell(row, col)
         
         if game_state.is_complete():
-            # Game completed!
+            # All cells filled: record score, delete save, show victory
             elapsed_time = time.time() - start_time
             completed_cells = sum(1 for r in range(9) for c in range(9) 
                                 if game_state.current_grid[r][c] != 0 and 
@@ -1272,6 +1285,9 @@ def draw_game_grid_centered(screen, game_state, font_large, font_small, y_offset
             x, y = x_offset + col * CELL_SIZE, y_offset + row * CELL_SIZE
             cell_coord = (row, col)
             
+            # Cell background color: white for givens, feedback-colored for
+            # player-placed cells (green=correct, red=wrong, yellow=multiple).
+            # Hard mode uses its own per-cell color map instead.
             if game_state.original_grid[row][col] != 0:
                 bg_color = COLOR_WHITE
             elif game_state.difficulty == "hard" and cell_coord in game_state.cell_status:
@@ -1287,15 +1303,17 @@ def draw_game_grid_centered(screen, game_state, font_large, font_small, y_offset
             
             if game_state.current_grid[row][col] != 0:
                 num = game_state.current_grid[row][col]
+                # Black for given digits, blue for player-placed ones
                 color = COLOR_BLACK if game_state.original_grid[row][col] != 0 else COLOR_VIBRANT_BLUE
                 text = font_large.render(str(num), True, color)
                 text_rect = text.get_rect(center=(x + CELL_SIZE // 2, y + CELL_SIZE // 2))
                 screen.blit(text, text_rect)
             
-            # Draw stash (pencil marks)
+            # Draw stash (pencil marks) in a 3x3 sub-grid within the cell
             if cell_coord in game_state.stash and game_state.current_grid[row][col] == 0:
                 stashed = sorted(game_state.stash[cell_coord])
                 for idx, num in enumerate(stashed):
+                    # Position each mark in a 3-column layout (idx%3=col, idx//3=row)
                     sx = x + 4 + (idx % 3) * 20
                     sy = y + 2 + (idx // 3) * 18
                     # ✅ Color darker for better contrast on white background
@@ -1457,6 +1475,7 @@ def scores_menu():
         title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, 40))
         screen.blit(title, title_rect)
 
+        # --- Section 1: aggregate stats per difficulty ---
         y = 80
         stat_title = font_stat.render(f"Total Games: {stats['total_games']}", True, COLOR_VIBRANT_YELLOW)
         screen.blit(stat_title, (50, y))
@@ -1476,6 +1495,7 @@ def scores_menu():
             screen.blit(text, (50, y))
             y += 30
         
+        # --- Section 2: last 10 individual game entries ---
         y += 20
         last_games_title = font_stat.render("Recent games:", True, COLOR_VIBRANT_CYAN)
         screen.blit(last_games_title, (50, y))
@@ -1524,6 +1544,7 @@ def show_victory_screen():
         COLOR_VIBRANT_YELLOW, COLOR_VIBRANT_ORANGE, COLOR_VIBRANT_PURPLE,
         COLOR_VIBRANT_CYAN, COLOR_VIBRANT_PINK,
     ]
+    # Each particle is a tuple: (x, y, fall_speed, size, color, horizontal_drift)
     confetti = []
     for _ in range(80):
         confetti.append((
@@ -1561,6 +1582,7 @@ def show_victory_screen():
 
         draw_gradient_background(screen, WINDOW_WIDTH, WINDOW_HEIGHT, COLOR_BG_PRIMARY, COLOR_BG_ACCENT)
 
+        # Update and draw confetti: apply gravity + drift, recycle off-screen particles
         new_confetti = []
         for x, y, speed, size, color, drift in confetti:
             y += speed
@@ -1574,6 +1596,7 @@ def show_victory_screen():
             pygame.draw.rect(screen, color, (int(x), int(y), rect_w, rect_h))
         confetti = new_confetti
 
+        # Sine-based pulsation: scale oscillates between 0.85x and 1.15x
         pulse = math.sin(frame_count * 0.05) * 0.15 + 1.0
         scaled_w = int(base_text.get_width() * pulse)
         scaled_h = int(base_text.get_height() * pulse)
@@ -1581,6 +1604,7 @@ def show_victory_screen():
         text_rect = scaled_text.get_rect(center=(WINDOW_WIDTH // 2, 120))
         screen.blit(scaled_text, text_rect)
 
+        # Fade-in subtitle over ~64 frames
         alpha = min(255, frame_count * 4)
         sub_surf = font_small.render("Congratulations!", True, COLOR_VIBRANT_YELLOW)
         sub_surf.set_alpha(alpha)

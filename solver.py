@@ -1,3 +1,10 @@
+"""Sudoku solving algorithms and benchmark persistence.
+
+Provides 5 solvers (brute force, backtracking, backtracking+MRV, constraint
+propagation, propagation+MRV) sharing a common interface, plus SQLite-backed
+benchmark storage for timing and iteration counts.
+"""
+
 # =============================================================================
 # solver.py -- All solving algorithms for the Sudoku grid
 # =============================================================================

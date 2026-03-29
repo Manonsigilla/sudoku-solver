@@ -34,6 +34,7 @@ ALGORITHMS = [
 
 
 def main():
+    """Run all algorithms on every grid file and save results to SQLite."""
     skip_brute = "--skip-brute" in sys.argv
 
     grid_files = sorted(

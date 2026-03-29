@@ -1,3 +1,10 @@
+"""Sudoku data model and puzzle generation.
+
+Defines the SudokuGrid class (load from file, validate, solve), grid utility
+functions, random puzzle generation with uniqueness guarantee, solution caching
+via solutions.json, and player move validation.
+"""
+
 import json
 import os
 import random
@@ -236,6 +243,8 @@ def generate_solved_grid() -> list[list[int]]:
         return True
 
     def fill():
+        """Recursive backtracking to fill the grid. Shuffled candidates
+        produce a different valid grid on each call."""
         for row in range(9):
             for col in range(9):
                 if grid[row][col] == 0:
@@ -275,6 +284,8 @@ def _count_solutions(grid: list[list[int]], limit: int = 2) -> int:
     count = [0]
 
     def _solve(g):
+        """Backtracking that increments count[0] for each complete solution
+        found. Returns True when limit is reached to stop early."""
         empty = None
         for r in range(9):
             for c in range(9):
@@ -285,12 +296,14 @@ def _count_solutions(grid: list[list[int]], limit: int = 2) -> int:
                 break
         if empty is None:
             count[0] += 1
+            # True = "stop searching", not "success"
             return count[0] >= limit
         r, c = empty
         for num in range(1, 10):
             if _is_valid_placement(g, r, c, num):
                 g[r][c] = num
                 if _solve(g):
+                    # Enough solutions found; undo placement and propagate stop
                     g[r][c] = 0
                     return True
                 g[r][c] = 0
@@ -381,6 +394,7 @@ def get_or_generate_puzzle(
                 solved_grid = string_to_grid(db[grid_key])
                 return puzzle_grid, solved_grid
             else:
+                # No cached solution: solve with the fastest algorithm to get it
                 print("Solving puzzle for validation...")
                 solved_grid = [row[:] for row in sudoku.grid]
                 # BUG G1 fix: use _is_valid_placement on solved_grid
