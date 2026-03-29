@@ -30,6 +30,12 @@ Projet réalisé dans le cadre de la formation à La Plateforme (Marseille).
 
 ---
 
+## Veille technologique
+
+- **Peter Norvig** - "Solving Every Sudoku Puzzle" (article seminal AC-3+MRV)
+- **AC-3 Algorithm** - Constraint propagation standards
+- **Benchmarking standards** - Mesure de complexité vs temps réel
+
 ## Utilisation
 
 Lancez le programme principal :
